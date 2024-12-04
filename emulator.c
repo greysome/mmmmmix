@@ -257,7 +257,6 @@ void numtochar(word *destA, word *destX) {
 }
 
 void printbyte(byte b) {
-  assert(b <= 55);
   switch (b) {
   case 0: putchar(' '); break;
 
@@ -302,13 +301,18 @@ void printbyte(byte b) {
   case 53: putchar(';'); break;
   case 54: putchar(':'); break;
   case 55: putchar('\''); break;
+
+  default: putchar('?'); break;
   }
 }
 
 void initmix(mix *mix) {
   mix->done = false;
+  mix->err = "";
   mix->PC = 0;
+  memset(mix->exectimes, 0, 4000*sizeof(int));
   memset(mix->execcounts, 0, 4000*sizeof(int));
+
   mix->overflow = false;
   mix->cmp = 0;
   mix->A = POS(0);
@@ -316,8 +320,49 @@ void initmix(mix *mix) {
   for (int i = 0; i < 6; i++)
     mix->Is[i] = POS(0);
   mix->J = POS(0);
-  memset(mix->mem, 0, 4000*sizeof(word));
-  memset(mix->exectimes, 0, 4000*sizeof(int));
+  for (int i = 0; i < 4000; i++)
+    mix->mem[i] = POS(0);
+  mix->cardfile = NULL;
+}
+
+byte mixcharcode(char c) {
+  switch (c) {
+  case ' ': return 0;
+
+  case 'A': case 'B': case 'C': case 'D': case 'E':
+  case 'F': case 'G': case 'H': case 'I':
+    return 1+c-'A';
+
+  case 'J': case 'K': case 'L': case 'M': case 'N':
+  case 'O': case 'P': case 'Q': case 'R':
+    return 11+c-'J';
+
+  case 'S': case 'T': case 'U': case 'V': case 'W':
+  case 'X': case 'Y': case 'Z':
+    return 22+c-'S';
+
+  case '0': case '1': case '2': case '3': case '4':
+  case '5': case '6': case '7': case '8': case '9':
+    return 30+c-'0';
+
+  case '.': return 40;
+  case ',': return 41;
+  case '(': return 42;
+  case ')': return 43;
+  case '+': return 44;
+  case '-': return 45;
+  case '*': return 46;
+  case '/': return 47;
+  case '=': return 48;
+  case '$': return 49;
+  case '<': return 50;
+  case '>': return 51;
+  case '@': return 52;
+  case ';': return 53;
+  case ':': return 54;
+  case '\'': return 55;
+  default: return 63;
+  }
 }
 
 void onestep(mix *mix) {
@@ -332,7 +377,7 @@ void onestep(mix *mix) {
   mix->execcounts[mix->PC]++;
 #define LOGTIME(t) mix->exectimes[mix->PC] += (t)
 
-  if (C == 0)
+  if (C == 0)                                   // NOP
     LOGTIME(1);
 
   else if (C == 1) {                            // ADD
@@ -364,30 +409,43 @@ void onestep(mix *mix) {
       LOGTIME(10);
       numtochar(&mix->A, &mix->X);
     }
-    else if (F == 2)                            // HLT
+    else if (F == 2) {                          // HLT
+      LOGTIME(10);
       mix->done = true;
+      mix->err = "";
+    }
+    else {
+      mix->done = true;
+      mix->err = "invalid field for instruction, C=5";
+    }
   }
 
   else if (C == 6) {
     LOGTIME(2);
     if (F == 0)
-      shiftleftword(&mix->A, INT(M));                // SLA
+      shiftleftword(&mix->A, INT(M));           // SLA
     else if (F == 1)
-      shiftrightword(&mix->A, INT(M));               // SRA
+      shiftrightword(&mix->A, INT(M));          // SRA
     else if (F == 2)
-      shiftleftwords(&mix->A, &mix->X, INT(M));      // SLAX
+      shiftleftwords(&mix->A, &mix->X, INT(M));   // SLAX
     else if (F == 3)
-      shiftrightwords(&mix->A, &mix->X, INT(M));     // SRAX
+      shiftrightwords(&mix->A, &mix->X, INT(M));  // SRAX
     else if (F == 4)
-      shiftleftcirc(&mix->A, &mix->X, INT(M));       // SLC
+      shiftleftcirc(&mix->A, &mix->X, INT(M));  // SLC
     else if (F == 5)
-      shiftrightcirc(&mix->A, &mix->X, INT(M));      // SRC
+      shiftrightcirc(&mix->A, &mix->X, INT(M)); // SRC
+    else {
+      mix->done = true;
+      mix->err = "invalid field for instruction, C=6";
+    }
   }
 
   else if (C == 7) {                            // MOVE
     LOGTIME(1 + 2*F);
-    for (int i = 0; i < F; i++)
-      mix->mem[mix->Is[0]++] = mix->mem[INT(M)+i];
+    for (int i = 0; i < F; i++) {
+      mix->mem[INT(mix->Is[0])] = mix->mem[INT(M)+i];
+      mix->Is[0]++;
+    }
   }
 
   else if (8 <= C && C <= 15) {                 // LDx
@@ -397,7 +455,10 @@ void onestep(mix *mix) {
 
   else if (16 <= C && C <= 23) {                // LDxN
     LOGTIME(2);
-    loadword(Ix(C-8, mix), negword(V()), F);
+    loadword(Ix(C-16, mix), negword(V()), F);
+    // If sign is not part of F, make the word negative.
+    if ((F>>3) & ONES(3) >= 1)
+      *Ix(C-16, mix) = NEG(*Ix(C-16, mix));
   }
 
   else if (24 <= C && C <= 31) {                // STx
@@ -415,18 +476,49 @@ void onestep(mix *mix) {
     storeword(&mix->mem[INT(M)], 0, F);
   }
 
-  else if (C == 34) {
+  else if (C == 34) {                           // JBUS
+    LOGTIME(1);
   }
 
-  else if (C == 35) {
+  else if (C == 35) {                           // IOC
+    LOGTIME(1);
   }
 
-  else if (C == 36) {
+  else if (C == 36) {                           // IN
+    LOGTIME(1);
+    if (F == 16) {                              // Card reader
+      if (mix->cardfile == NULL) {
+	mix->done = true;
+	mix->err = "unspecified input file for card reader";
+	goto skip;
+      }
+      for (int i = 0; i < 80; i++) {
+	char c;
+	if ((c = fgetc(mix->cardfile)) == EOF) {
+	  mix->done = true;
+	  mix->err = "EOF encountered in card reader";
+	  goto skip;
+	}
+	if (c == '\n') {
+	  i--;
+	  continue;
+	}
+	// Shift the character into the appropriate byte of the appropriate word.
+	int pos = i%5 + 1;
+	word w = mix->mem[INT(M)+i/5];
+	storeword(&mix->mem[INT(M)+i/5], mixcharcode(c), pos*8 + pos);
+      }
+skip:
+    }
+    else {
+      mix->done = true;
+      mix->err = "invalid input device, C=36";
+    }
   }
 
   else if (C == 37) {                           // OUT
     LOGTIME(1);
-    if (F == 18) {
+    if (F == 18) {                              // Line printer
       for (int i = 0; i < 24; i++) {
 	word w = mix->mem[INT(M)+i];
 	byte b1 = (w >> 24) & ONES(6); printbyte(b1);
@@ -437,12 +529,17 @@ void onestep(mix *mix) {
       }
       putchar('\n');
     }
+    else {
+      mix->done = true;
+      mix->err = "invalid output device, C=37";
+    }
   }
 
-  else if (C == 38) {
+  else if (C == 38) {                           // JRED
+    LOGTIME(1);
   }
 
-  else if (C == 39) {               
+  else if (C == 39) {
     LOGTIME(1);
     if (F == 0 || F == 1 ||                     // JMP/JSJ
 	(F == 2 && mix->overflow)  ||           // JOV
@@ -455,23 +552,31 @@ void onestep(mix *mix) {
 	(F == 9 && mix->cmp <= 0)) {            // JLE
       mix->PC = INT(M);
       if (F != 2)
-	mix->J = mix->PC+1;
+	mix->J = POS(mix->PC+1);
       goto noadvance;
+    }
+    else if (F >= 10) {
+      mix->done = true;
+      mix->err = "invalid field for instruction, C=39";
     }
   }
 
   else if (40 <= C && C <= 47) {
     LOGTIME(1);
     word w = *Ix(C-40, mix);
-    if ((F == 0 && !SIGN(w) && MAG(w) > 0) ||   // JxN
-	(F == 1 && MAG(w) == 0)            ||   // JxZ
-	(F == 2 && SIGN(w) && MAG(w) > 0)  ||   // JxP
-	(F == 3 && (SIGN(w) || MAG(w)==0)) ||   // JxNN
-	(F == 4 && MAG(w) != 0)            ||   // JxNZ
-	(F == 5 && (!SIGN(w) || MAG(w)==0))) {  // JxNP
+    if ((F == 0 && !SIGN(w) && MAG(w) > 0)   ||   // JxN
+	(F == 1 && MAG(w) == 0)              ||   // JxZ
+	(F == 2 && SIGN(w) && MAG(w) > 0)    ||   // JxP
+	(F == 3 && (SIGN(w) || MAG(w) == 0)) ||   // JxNN
+	(F == 4 && MAG(w) != 0)              ||   // JxNZ
+	(F == 5 && (!SIGN(w) || MAG(w) == 0))) {  // JxNP
       mix->PC = INT(M);
-      mix->J = mix->PC+1;
+      mix->J = POS(mix->PC+1);
       goto noadvance;
+    }
+    else if (F >= 6) {
+      mix->done = true;
+      mix->err = "invalid field for instruction, C=40-47";
     }
   }
 
@@ -485,11 +590,20 @@ void onestep(mix *mix) {
       *Ix(C-48, mix) = M;
     else if (F == 3)                            // ENNx
       *Ix(C-48, mix) = negword(M);
-  } 
+    else {
+      mix->done = true;
+      mix->err = "invalid field for instruction, C=48-55";
+    }
+  }
 
   else if (56 <= C && C <= 63) {                // CMPx
-    LOGTIME(1);
+    LOGTIME(2);
     mix->cmp = compareword(*Ix(C-56, mix), V(), F);
+  }
+
+  else {
+    mix->done = true;
+    mix->err = "invalid instruction";
   }
 
   mix->PC++;
@@ -498,9 +612,23 @@ noadvance:
 #define MORE_THAN_TWO_BYTES(w) (MAG(w)>>12 != 0)
   for (int i = 0; i < 6; i++) {
     if (MORE_THAN_TWO_BYTES(mix->Is[i])) {
-      //printf("ERROR: rI%d contains more than two bytes\n", i+1);
+      mix->done = true;
+      if (i == 0)
+	mix->err = "rI1 contains more than two bytes";
+      else if (i == 1)
+	mix->err = "rI2 contains more than two bytes";
+      else if (i == 2)
+	mix->err = "rI3 contains more than two bytes";
+      else if (i == 3)
+	mix->err = "rI4 contains more than two bytes";
+      else if (i == 4)
+	mix->err = "rI5 contains more than two bytes";
+      else if (i == 5)
+	mix->err = "rI6 contains more than two bytes";
     }
   }
-  if (MORE_THAN_TWO_BYTES(mix->J)) {}
-    //printf("ERROR: rJ contains more than two bytes\n");
+  if (MORE_THAN_TWO_BYTES(mix->J)) {
+    mix->done = true;
+    mix->err = "rJ contains more than two bytes";
+  }
 }

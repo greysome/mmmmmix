@@ -64,7 +64,7 @@ word OPCODES[] = {
 };
 
 void initparsestate(parsestate *ps) {
-  ps->star = 3000;
+  ps->star = 0;
   ps->numsyms = 0;
   ps->numfuturerefs = 0;
   for (int i = 0; i < 10; i++)
@@ -356,7 +356,10 @@ bool parseALF(char **s, char *alf, parsestate *ps) {
   if (*(++(*s)) == ' ')
     (*s)++;
   for (int i = 0; i < 5; i++) {
-    if (isalnum(**s) || **s == ' ')
+    if (isalnum(**s) || **s == ' ' || **s == '.' || **s == ',' || **s == '(' ||
+	**s == ')' || **s == '+' || **s == '-' || **s == '*' || **s == '/' ||
+	**s == '=' || **s == '$' || **s == '<' || **s == '>' || **s == '@' ||
+	**s == ';' || **s == ':' || **s == '\'')
       *(alf++) = toupper(*((*s)++));
     else
       goto err;
@@ -367,19 +370,10 @@ err:
   return false;
 }
 
-char mixcharcode(char c) {
-  if (isdigit(c))
-    return 30+c-'0';
-  else if ('A' <= c && c <= 'I')
-    return 1+c-'A';
-  else if ('J' <= c && c <= 'R')
-    return 11+c-'J';
-  else if ('S' <= c && c <= 'Z')
-    return 22+c-'S';
-  return 0;
-}
-
 bool parseline(char *line, parsestate *ps, mix *mix) {
+  if (line[0] == '*')  // Ignore comments
+    return true;
+
   char sym[11], op[5];
   word val;
   int opidx;
@@ -439,7 +433,7 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
     mix->mem[ps->star++] = WORD(true, alf[0], alf[1], alf[2], alf[3], alf[4]);
   }
   else if (!strcmp(op, "END")) {
-    // Handle future references and literal constants
+    // Handle future references
     for (int i = 0; i < ps->numfuturerefs; i++) {
       futureref *fr = &ps->futurerefs[i];
       if (!fr->which && lookupsym(fr->sym, &val, ps)) {
@@ -449,13 +443,23 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
       }
     }
 
-    // Add undefined symbols
+    // Handle literal constants and undefined symbols
     for (int i = 0; i < ps->numfuturerefs; i++) {
       futureref *fr = &ps->futurerefs[i];
       word val = fr->which ? fr->literal : POS(0);
+      int addr = ps->star;
       if (!fr->resolved) {
+	// Check if the symbol is already defined
+	// (happens with the non-first instances of an undefined symbol).
+	if (!fr->which) {
+	  word tmp;
+	  if (lookupsym(fr->sym, &tmp, ps))
+	    addr = INT(tmp);
+	  else
+	    addsym(fr->sym, POS(ps->star), ps);
+	}
 	word instr = mix->mem[fr->addr];
-	mix->mem[fr->addr] = INSTR(ADDR(ps->star), getI(instr), getF(instr), getC(instr));
+	mix->mem[fr->addr] = INSTR(ADDR(addr), getI(instr), getF(instr), getC(instr));
 	mix->mem[ps->star] = val;
 	ps->star++;
 	fr->resolved = true;

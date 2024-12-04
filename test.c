@@ -413,10 +413,11 @@ void testassembler() {
   assert(parseexpr(&line, &w, &ps));
   assert(w == POS(11));
 
-  line = "*-3\n";
+  line = "*+3\n";
   assert(parseexpr(&line, &w, &ps));
-  assert(w == POS(ps.star-3));
+  assert(w == POS(ps.star+3));
 
+  ps.star = 1;
   line = "***\n";
   assert(parseexpr(&line, &w, &ps));
   assert(w == POS(ps.star*ps.star));
@@ -426,10 +427,10 @@ void testassembler() {
   assert(parseA(&line, &w, &ps));
   assert(w == POS(5678));
 
+  ps.star = 3000;
   line = "* \n";
   assert(parseA(&line, &w, &ps));
   assert(w == POS(3000));
-
   line = "###\n";
   assert(parseA(&line, &w, &ps));
   assert(w == POS(0));
@@ -501,9 +502,11 @@ void testassembler() {
   line = " ORIG 9999\n";
   assert(!parseline(line, &ps, &mix));
 
-  ps.star = 3000;
-  line = "**INVALID LINE**";
+  line = "==INVALID LINE==";
   assert(!parseline(line, &ps, &mix));
+
+  line = "* COMMENT";
+  assert(parseline(line, &ps, &mix));
 
   ps.star = 3000;
   line = " STA 2000(1:5)\n";
@@ -516,7 +519,7 @@ void testassembler() {
   assert(parseline(line, &ps, &mix));
   assert(ps.numfuturerefs == 1);
   assert(!ps.futurerefs[0].resolved);
-  assert(ps.futurerefs[0].addr == 3000);
+  assert(ps.futurerefs[0].addr == 0);
   assert(!ps.futurerefs[0].which);
   assert(!strcmp(ps.futurerefs[0].sym, "FUTURE"));
   line = "FUTURE NOP\n";
@@ -533,13 +536,13 @@ void testassembler() {
   assert(parseline(line, &ps, &mix));
   assert(ps.futurerefs[0].resolved);
   assert(ps.futurerefs[1].resolved);
-  assert(getA(mix.mem[3000]) == (3001|(1<<12)));
-  assert(getA(mix.mem[3002]) == (3004|(1<<12)));
-  assert(getA(mix.mem[3003]) == (3005|(1<<12)));
-  assert(mix.mem[3004] == POS(0));
-  assert(mix.mem[3005] == POS(2000));
+  assert(getA(mix.mem[0]) == (1|(1<<12)));
+  assert(getA(mix.mem[2]) == (4|(1<<12)));
+  assert(getA(mix.mem[3]) == (5|(1<<12)));
+  assert(mix.mem[4] == POS(0));
+  assert(mix.mem[5] == POS(2000));
   assert(lookupsym("FOO", &w, &ps));
-  assert(w == POS(3006));
+  assert(w == POS(6));
   assert(mix.PC == 1000);
 
   // TEST: local symbols
@@ -548,7 +551,7 @@ void testassembler() {
   assert(parseline(line, &ps, &mix));
   assert(ps.localsymcounts[1] == 1);
   assert(lookupsym("1H#0", &w, &ps));
-  assert(w == POS(3000));
+  assert(w == POS(0));
   line = " JMP 1F\n";
   assert(parseline(line, &ps, &mix));
   line = " JMP 1B\n";
@@ -557,16 +560,27 @@ void testassembler() {
   assert(parseline(line, &ps, &mix));
   assert(ps.localsymcounts[2] == 1);
   assert(lookupsym("2H#0", &w, &ps));
-  assert(w == POS(3003));
+  assert(w == POS(3));
   line = "1H NOP\n";
   assert(parseline(line, &ps, &mix));
   assert(ps.localsymcounts[1] == 2);
   assert(lookupsym("1H#1", &w, &ps));
-  assert(w == POS(3004));
+  assert(w == POS(4));
   line = " END 1000\n";
   assert(parseline(line, &ps, &mix));
-  assert(getA(mix.mem[3001]) == (3004|(1<<12)));
-  assert(getA(mix.mem[3002]) == (3000|(1<<12)));
+  assert(getA(mix.mem[1]) == (4|(1<<12)));
+  assert(getA(mix.mem[2]) == (0|(1<<12)));
+
+  // TEST: multiple of the same undefined symbol
+  initparsestate(&ps);
+  line = " JMP UNDEFINED\n";
+  assert(parseline(line, &ps, &mix));
+  line = " JMP UNDEFINED\n";
+  assert(parseline(line, &ps, &mix));
+  line = " END 1000\n";
+  assert(parseline(line, &ps, &mix));
+  assert(getA(mix.mem[0]) == (2|(1<<12)));
+  assert(getA(mix.mem[1]) == (2|(1<<12)));
 }
 
 int main() {

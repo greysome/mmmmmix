@@ -29,19 +29,22 @@ typedef uint32_t word;
 
 typedef struct {
   bool done;
+  char *err;
   int PC;         // Program counter
+
   // Keep track of the execution counts and times of each memory cell.
   int execcounts[4000];
   int exectimes[4000];
 
-  bool overflow;  // Overflow toggle
-  int cmp;        // Comparison indicator
+  bool overflow;
+  int cmp;
   word A, X;
-  word Is[6];     // Index registers
-  word J;         // Jump register
+  word Is[6];
+  word J;
   // (Technically the I and J registers only have 2 bytes, but it is
   //  convenient to reuse the word type.)
   word mem[4000];
+  FILE *cardfile; // File to read "cards" from
 } mix;
 
 // Return a pointer to:
@@ -96,5 +99,6 @@ void shiftrightcirc(word *destA, word *destX, int M);
 
 
 void initmix(mix *mix);
+byte mixcharcode(char c);
 void onestep(mix *mix);
 #endif
