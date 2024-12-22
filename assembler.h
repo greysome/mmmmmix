@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include "emulator.h"
 
+#define LINELEN 100
+
 #define SKIPSPACES(t) while (isspace(*((t)++))); (t)--
 
 // Stores information about a future reference or a literal constant
@@ -45,5 +47,5 @@ bool parseI(char **s, word *val, parsestate *ps);
 bool parseF(char **s, word *val, parsestate *ps);
 bool parseW(char **s, word *val, parsestate *ps);
 
-bool parseline(char *line, parsestate *ps, mix *mix);
+bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable);
 #endif

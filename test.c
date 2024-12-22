@@ -471,69 +471,70 @@ void testassembler() {
   line = "-1000(0:2),1\n";
   assert(parseW(&line, &w, &ps));
   assert(w == POS(1));
-  
+
+  bool debuggable;
   // TEST: parseline
   initparsestate(&ps);
   line = "START NOP\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numsyms == 1);
   assert(!strcmp(ps.syms[0], "START"));
   assert(ps.symvals[0] == POS(ps.star-1));
 
   line = "TEN EQU 10\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numsyms == 2);
   assert(!strcmp(ps.syms[1], "TEN"));
   assert(ps.symvals[1] == POS(10));
 
   line = " CON 1337\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numsyms == 2);
   assert(mix.mem[ps.star-1] == POS(1337));
 
   line = " ALF A2J5S\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(mix.mem[ps.star-1] == WORD(true,1,32,11,35,22));
 
   line = " ORIG 2000\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.star == 2000);
 
   line = " ORIG 9999\n";
-  assert(!parseline(line, &ps, &mix));
+  assert(!parseline(line, &ps, &mix, &debuggable));
 
   line = "==INVALID LINE==";
-  assert(!parseline(line, &ps, &mix));
+  assert(!parseline(line, &ps, &mix, &debuggable));
 
   line = "* COMMENT";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
 
   ps.star = 3000;
   line = " STA 2000(1:5)\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(mix.mem[3000] == INSTR(ADDR(2000), 0, 13, 24));
 
   // TEST: future references
   initparsestate(&ps);
   line = " JMP FUTURE\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numfuturerefs == 1);
   assert(!ps.futurerefs[0].resolved);
   assert(ps.futurerefs[0].addr == 0);
   assert(!ps.futurerefs[0].which);
   assert(!strcmp(ps.futurerefs[0].sym, "FUTURE"));
   line = "FUTURE NOP\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numfuturerefs == 2);
   line = " JMP =2000=\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.numfuturerefs == 3);
   assert(ps.futurerefs[2].which);
   assert(ps.futurerefs[2].literal == POS(2000));
   line = "FOO END 1000\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.futurerefs[0].resolved);
   assert(ps.futurerefs[1].resolved);
   assert(getA(mix.mem[0]) == (1|(1<<12)));
@@ -548,37 +549,37 @@ void testassembler() {
   // TEST: local symbols
   initparsestate(&ps);
   line = "1H NOP\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.localsymcounts[1] == 1);
   assert(lookupsym("1H#0", &w, &ps));
   assert(w == POS(0));
   line = " JMP 1F\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   line = " JMP 1B\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   line = "2H NOP\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.localsymcounts[2] == 1);
   assert(lookupsym("2H#0", &w, &ps));
   assert(w == POS(3));
   line = "1H NOP\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(ps.localsymcounts[1] == 2);
   assert(lookupsym("1H#1", &w, &ps));
   assert(w == POS(4));
   line = " END 1000\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(getA(mix.mem[1]) == (4|(1<<12)));
   assert(getA(mix.mem[2]) == (0|(1<<12)));
 
   // TEST: multiple of the same undefined symbol
   initparsestate(&ps);
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   line = " END 1000\n";
-  assert(parseline(line, &ps, &mix));
+  assert(parseline(line, &ps, &mix, &debuggable));
   assert(getA(mix.mem[0]) == (2|(1<<12)));
   assert(getA(mix.mem[1]) == (2|(1<<12)));
 }

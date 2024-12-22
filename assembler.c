@@ -370,9 +370,18 @@ err:
   return false;
 }
 
-bool parseline(char *line, parsestate *ps, mix *mix) {
-  if (line[0] == '*')  // Ignore comments
+// Parse line, returning the status and updating the parse state and
+// mix instance.
+// For debugging purposes, the return parameter `debuggable` is set to
+// true if the line parsed corresponds to an instruction/constant/alf
+// in memory. For example, an ORIG or END line will have debuggable
+// set to false.
+bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
+  *debuggable = true;
+  if (line[0] == '*') { // Ignore comments
+    *debuggable = false;
     return true;
+  }
 
   char sym[11], op[5];
   word val;
@@ -405,6 +414,7 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
     if (!parseW(&line, &val, ps))
       return false;
     addsym(sym, val, ps);
+    *debuggable = false;
   }
   else if (!strcmp(op, "ORIG")) {
     if (parseLOC)
@@ -414,6 +424,7 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
     if (INT(val) < 0 || INT(val) >= 4000)
       return false;
     ps->star = INT(val);
+    *debuggable = false;
   }
   else if (!strcmp(op, "CON")) {
     if (parseLOC)
@@ -473,6 +484,7 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
       return false;
     if (INT(val) < 0 || INT(val) >= 4000)
       return false;
+    *debuggable = false;
     mix->PC = INT(val);
   }
   else {  // Parse a normal MIX operation
@@ -481,9 +493,6 @@ bool parseline(char *line, parsestate *ps, mix *mix) {
     if (!parseA(&line, &A, ps)) return false;
     if (!parseI(&line, &I, ps)) return false;
     if (!parseF(&line, &F, ps)) return false;
-  }
-
-  if (!ISSPECIALOP(op)) {
     if (INT(I) < 0 || INT(I) > 6) return false;
     if (INT(F) < 0 || INT(F) >= 64) return false;
     mix->mem[ps->star++] = INSTR(ADDR(INT(A)), (byte)I, INT(F), INT(C));

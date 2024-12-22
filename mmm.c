@@ -3,9 +3,17 @@
 #include "emulator.h"
 #include "assembler.h"
 
-#define LINELEN 32
+typedef struct {
+  mix mix;
+  char globalcardfile[LINELEN];
+  char debuglines[4000][LINELEN];
+} mmmstate;
 
-mix amix;
+static mmmstate mmm;
+
+#define RED(s)   "\033[31m" s "\033[37m"
+#define GREEN(s) "\033[32m" s "\033[37m"
+#define CYAN(s)  "\033[36m" s "\033[37m"
 
 void displayshort(word w) {
   bool sign = SIGN(w);
@@ -33,7 +41,7 @@ void displayinstr(word w) {
   printf("%c %04d %02d %02d %02d", sign ? '+' : '-', A_abs, I, F, C);
 }
 
-int displayAI(bool sign, word A_abs, byte I, byte F, byte default_F) {
+int displayfields(bool sign, word A_abs, byte I, byte F, byte default_F) {
   int numchars = 0;
   if (!sign) {
     numchars++;
@@ -47,14 +55,14 @@ int displayAI(bool sign, word A_abs, byte I, byte F, byte default_F) {
   return numchars;
 }
 
-int displayinstrnicely(word w) {
+int pprintinstr(word w) {
   bool sign = (getA(w) >> 12) & 1;
   word A_abs = getA(w) & ONES(12);
   byte I = getI(w);
   byte F = getF(w);
   byte C = getC(w);
 
-#define PP(s,DEFAULTF) { printf(s "\t"); return 8 + displayAI(sign, A_abs, I, F, DEFAULTF); }
+#define PP(s,DEFAULTF) { printf(s "\t"); return 8 + displayfields(sign, A_abs, I, F, DEFAULTF); }
 #define UNKNOWN()      { printf("???"); return 3; }
 
   if (C == 0) PP("NOP", 0)
@@ -261,39 +269,49 @@ int displayinstrnicely(word w) {
   else UNKNOWN()
 }
 
+int showinstrataddr(int i) {
+  if (strnlen(mmm.debuglines[i], LINELEN) == 0) {
+    putchar('\t');
+    return 8 + pprintinstr(mmm.mix.mem[i]);
+  }
+  else
+    return printf(mmm.debuglines[i]);
+}
+
 void printregisters() {
-  printf(" A: "); displayword(amix.A);
-  printf("\t("); printf("%d", INT(amix.A));
-  printf(")\n X: "); displayword(amix.X);
-  printf("\t("); printf("%d", INT(amix.X));
-  printf(")\nI1: "); displayshort(amix.Is[0]);
-  printf("\t("); printf("%d", INT(amix.Is[0]));
-  printf(")\nI2: "); displayshort(amix.Is[1]);
-  printf("\t("); printf("%d", INT(amix.Is[1]));
-  printf(")\nI3: "); displayshort(amix.Is[2]);
-  printf("\t("); printf("%d", INT(amix.Is[2]));
-  printf(")\nI4: "); displayshort(amix.Is[3]);
-  printf("\t("); printf("%d", INT(amix.Is[3]));
-  printf(")\nI5: "); displayshort(amix.Is[4]);
-  printf("\t("); printf("%d", INT(amix.Is[4]));
-  printf(")\nI6: "); displayshort(amix.Is[5]);
-  printf("\t("); printf("%d", INT(amix.Is[5]));
-  printf(")\n J: "); displayshort(amix.J);
-  printf("\t("); printf("%d", INT(amix.J));
+  printf(" A: "); displayword(mmm.mix.A);
+  printf("\t("); printf("%d", INT(mmm.mix.A));
+  printf(")\n X: "); displayword(mmm.mix.X);
+  printf("\t("); printf("%d", INT(mmm.mix.X));
+  printf(")\nI1: "); displayshort(mmm.mix.Is[0]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[0]));
+  printf(")\nI2: "); displayshort(mmm.mix.Is[1]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[1]));
+  printf(")\nI3: "); displayshort(mmm.mix.Is[2]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[2]));
+  printf(")\nI4: "); displayshort(mmm.mix.Is[3]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[3]));
+  printf(")\nI5: "); displayshort(mmm.mix.Is[4]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[4]));
+  printf(")\nI6: "); displayshort(mmm.mix.Is[5]);
+  printf("\t("); printf("%d", INT(mmm.mix.Is[5]));
+  printf(")\n J: "); displayshort(mmm.mix.J);
+  printf("\t("); printf("%d", INT(mmm.mix.J));
   printf(")\n\nOverflow: ");
-  if (amix.overflow)
+  if (mmm.mix.overflow)
     printf("ON\n");
   else
     printf("OFF\n");
   printf("Comparison: ");
-  if (amix.cmp == -1) putchar('<');
-  else if (amix.cmp == 1) putchar('>');
+  if (mmm.mix.cmp == -1) putchar('<');
+  else if (mmm.mix.cmp == 1) putchar('>');
   else putchar('=');
-  printf("\nCur instruction:\n%04d\t", amix.PC);
-  displayinstrnicely(amix.mem[amix.PC]);
-  printf("\t(");
-  displayinstr(amix.mem[amix.PC]);
-  printf(")\n");
+  printf("\nCur instruction:\n%04d\t", mmm.mix.PC);
+  printf("(");
+  displayinstr(mmm.mix.mem[mmm.mix.PC]);
+  printf(")\t");
+  showinstrataddr(mmm.mix.PC);
+  putchar('\n');
 }
 
 int numdigits(int x) {
@@ -307,30 +325,29 @@ int numdigits(int x) {
 void printtime() {
   int totaltime = 0;
   int maxdigits = 0;
-  for (int i = 0; i <= 4000; i++) {
-    totaltime += amix.exectimes[i];
-    int nd = numdigits(amix.execcounts[i]);
+  for (int i = 0; i < 4000; i++) {
+    totaltime += mmm.mix.exectimes[i];
+    int nd = numdigits(mmm.mix.execcounts[i]);
     if (nd > maxdigits)
       maxdigits = nd;
   }
   printf("Time taken: %du\n\n", totaltime);
   printf("BREAKDOWN\n");
-  for (int i = 0; i <= 4000; i++) {
-    int count = amix.execcounts[i];
+  for (int i = 0; i < 4000; i++) {
+    int count = mmm.mix.execcounts[i];
     int numchars;
-    if (count == 1) {
-      printf("%04d:\t", i);
-      numchars = 8 + displayinstrnicely(amix.mem[i]);
+    if (count == 1)
+      numchars = printf("%04d: %*c%d  time, %du", i, maxdigits-numdigits(count)+1, ' ', count, mmm.mix.exectimes[i]);
+    else if (count > 1)
+      numchars = printf("%04d: %*c%d times, %du", i, maxdigits-numdigits(count)+1, ' ', count, mmm.mix.exectimes[i]);
+    
+    if (count >= 1) {
       if (numchars < 24)
-	putchar('\t');
-      printf("\t%*c%d  time, %du\n", maxdigits-numdigits(count)+1, ' ', count, amix.exectimes[i]);
-    }
-    else if (count > 1) {
-      printf("%04d:\t", i);
-      numchars = 8 + displayinstrnicely(amix.mem[i]);
-      if (numchars < 24)
-	putchar('\t');
-      printf("\t%*c%d times, %du\n", maxdigits-numdigits(count)+1, ' ', count, amix.exectimes[i]);
+	printf("\t\t");
+      else if (numchars < 32)
+	printf("\t");
+      showinstrataddr(i);
+      putchar('\n');
     }
   }
 }
@@ -338,37 +355,10 @@ void printtime() {
 bool onestepwrapper(mix *mix) {
   onestep(mix);
   if (*mix->err != '\0') {
-    printf("Emulator stopped: %s\n", mix->err);
+    printf(RED("Emulator stopped at %d: %s") "\n", mix->PC, mix->err);
     return false;
   }
   return true;
-}
-
-void loadcommand(char *line) {
-  SKIPSPACES(line);
-  char *start = line;
-  while (!isspace(*(line++))) {};
-  *(line-1) = '\0';
-
-  initmix(&amix);
-  parsestate ps;
-  initparsestate(&ps);
-
-  FILE *fp;
-  if ((fp = fopen(start, "r")) == NULL) {
-    printf("Could not open %s\n", start);
-    return;
-  }
-  int linenumber = 0;
-  char fileline[LINELEN];
-  while (++linenumber && fgets(fileline, LINELEN, fp) != NULL) {
-    if (!parseline(fileline, &ps, &amix)) {
-      printf("Error at line %d\n", linenumber);
-      initmix(&amix);
-      return;
-    }
-  }
-  printf("Loaded %s\n", start);
 }
 
 void viewcommand(char *line) {
@@ -392,39 +382,30 @@ void viewcommand(char *line) {
   }
   for (int i = from; i <= to; i++)  {
     if (i < 0 || i >= 4000) {
-      printf("Invalid memory address %04d\n", from);
+      printf(RED("Invalid memory address %04d") "\n", from);
       return;
     }
     printf("%04d: ", i);
-    displayinstr(amix.mem[i]);
+    displayinstr(mmm.mix.mem[i]);
     putchar('\t');
-    displayword(amix.mem[i]);
+    displayword(mmm.mix.mem[i]);
     printf("   ");
-    if (INT(amix.mem[i]) >= 100 || (int)INT(amix.mem[i]) <= -10)
-      printf("(%d)\t", INT(amix.mem[i]));
+    if (INT(mmm.mix.mem[i]) >= 100 || (int)INT(mmm.mix.mem[i]) <= -10)
+      printf("(%d)\t", INT(mmm.mix.mem[i]));
     else
-      printf("(%d)\t\t", INT(amix.mem[i]));
-    displayinstrnicely(amix.mem[i]);
-    putchar('\t');
+      printf("(%d)\t\t", INT(mmm.mix.mem[i]));
+    showinstrataddr(i);
     putchar('\n');
   }
 }
 
+void loadcardfile(char *filename);
 void cardfilecommand(char *line) {
   SKIPSPACES(line);
   char *start = line;
   while (!isspace(*(line++))) {};
   *(line-1) = '\0';
-
-  FILE *cardfile;
-  if ((cardfile = fopen(start, "r")) == NULL) {
-    printf("Could not open %s\n", start);
-    return;
-  }
-  printf("Loaded cards from %s\n", start);
-  if (amix.cardfile)
-    fclose(amix.cardfile);
-  amix.cardfile = cardfile;
+  loadcardfile(start);
 }
 
 void breakpointcommand(char *line, mix *mix) {
@@ -434,7 +415,7 @@ void breakpointcommand(char *line, mix *mix) {
   *line = '\0';
   int bp = atoi(start);
   if (bp < 0 || bp >= 4000) {
-    printf("Breakpoint must be between 0-4000\n");
+    printf(RED("Breakpoint must be between 0-4000") "\n");
     return;
   }
   do {
@@ -443,9 +424,74 @@ void breakpointcommand(char *line, mix *mix) {
   } while (mix->PC != bp);
 }
 
-int main() {
-  initmix(&amix);
-  amix.PC = 3000;
+void loadcardfile(char *filename) {
+  FILE *fp;
+  if ((fp = fopen(filename, "r")) == NULL) {
+    printf(RED("Could not open card file %s") "\n", filename);
+    return;
+  }
+  printf(GREEN("Loaded card file %s") "\n", filename);
+  if (mmm.mix.cardfile)
+    fclose(mmm.mix.cardfile);
+  mmm.mix.cardfile = fp;
+  strncpy(mmm.globalcardfile, filename, LINELEN);
+}
+
+void loadmixalfile(char *filename) {
+  initmix(&mmm.mix);
+  parsestate ps;
+  initparsestate(&ps);
+
+  FILE *fp;
+  if ((fp = fopen(filename, "r")) == NULL) {
+    printf(RED("Could not open MIXAL file %s") "\n", filename);
+    return;
+  }
+  int linenum = 0;
+  char line[LINELEN];
+  bool debuggable;
+  while (++linenum && fgets(line, LINELEN, fp) != NULL) {
+    if (!parseline(line, &ps, &mmm.mix, &debuggable)) {
+      printf(RED("Error at line %d") "\n", linenum);
+      initmix(&mmm.mix);
+      return;
+    }
+    if (debuggable) {
+      strncpy(mmm.debuglines[ps.star-1], line, LINELEN);
+      int len = strlen(line);
+      mmm.debuglines[ps.star-1][len-1] = '\0';
+    }
+  }
+  printf(GREEN("Loaded MIXAL file %s") "\n", filename);
+}
+
+void printhelp() {
+  printf("Commands:\n");
+  printf("c <file>\t\tload card file\n");
+  printf("s\t\t\trun one step\n");
+  printf("b <line>\t\trun till breakpoint\n");
+  printf("g\t\t\trun whole program\n");
+  printf("v <start>-<end>\t\tview memory cells\n");
+  printf("r\t\t\tview registers and flags\n");
+  printf("t\t\t\tprint timing statistics\n");
+  printf("h\t\t\tprint this help\n");
+}
+
+int main(int argc, char **argv) {
+  mmm.globalcardfile[0] = '\0';
+  for (int i = 0; i < 4000; i++)
+    mmm.debuglines[i][0] = '\0';
+
+  if (argc < 2) {
+    printf(RED("Please specify a filename!") "\n");
+    return 0;
+  }
+  loadmixalfile(argv[1]);
+  if (argc >= 3)
+    loadcardfile(argv[2]);
+  printf(CYAN("MIX Management Module, by wyan") "\n");
+  printf("Type h for help\n");
+
   char line[LINELEN+1];
   while (true) {
     printf(">> ");
@@ -453,28 +499,30 @@ int main() {
     if (feof(stdin))
       return 0;
 
-    if (line[0] == 'l' && isspace(line[1]))         // Load MIXAL file
-      loadcommand(line+1);
+    if (line[0] == 'l' && isspace(line[1])) {       // Reload MIXAL file
+      loadmixalfile(argv[1]);
+      loadcardfile(mmm.globalcardfile);
+    }
     else if (line[0] == 'c' && isspace(line[1]))    // Load card file
       cardfilecommand(line+1);
 
     else if (line[0] == 's' && isspace(line[1])) {  // Run one step
-      if (amix.done) {
-	printf("Program has finished running\n");
+      if (mmm.mix.done) {
+	printf(GREEN("Program has finished running") "\n");
 	continue;
       }
-      onestepwrapper(&amix);
-      printf("%04d\t", amix.PC);
-      displayinstrnicely(amix.mem[amix.PC]);
+      onestepwrapper(&mmm.mix);
+      printf("%04d\t", mmm.mix.PC);
+      showinstrataddr(mmm.mix.PC);
       putchar('\n');
     }
 
     else if (line[0] == 'b' && isspace(line[1]))    // Run till breakpoint
-      breakpointcommand(line+1, &amix);
+      breakpointcommand(line+1, &mmm.mix);
 
     else if (line[0] == 'g' && isspace(line[1])) {  // Run whole program
-      while (!amix.done)
-	onestepwrapper(&amix);
+      while (!mmm.mix.done)
+	onestepwrapper(&mmm.mix);
     }
 
     else if (line[0] == 'v' && isspace(line[1]))    // View memory
@@ -483,5 +531,7 @@ int main() {
       printregisters();
     else if (line[0] == 't' && isspace(line[1]))    // View timing statistics
       printtime();
+    else if (line[0] == 'h' && isspace(line[1]))    // Help
+      printhelp();
   }
 }

@@ -47,13 +47,6 @@ typedef struct {
   FILE *cardfile; // File to read "cards" from
 } mix;
 
-// Return a pointer to:
-// mix->A,              if I=0
-// mix->Ii where i=I-1, if 1<=I<=6
-// mix->X,              if I=7.
-// Used to conveniently implement the LDx/STx/Jx/... families of functions
-word *Ix(int I, mix *mix);
-
 // Construct a 13-bit value consisting of a sign and 2 bytes.
 // The 2 bytes store the magnitude of x, i.e. not using two's
 // complement.
@@ -70,13 +63,9 @@ byte getI(word instr);
 byte getF(word instr);
 byte getC(word instr);
 word getM(word instr, mix *mix);
-word getV(word instr, mix *mix);
-
-
 
 // Return the portion of w specified by the field F.
 word applyfield(word w, byte F);
-
 void loadword(word *dest, word src, byte F);
 void storeword(word *dest, word src, byte F);
 word negword(word w);
@@ -86,9 +75,6 @@ void mulword(word *destA, word *destX, word src, byte F);
 bool divword(word *destA, word *destX, word src, byte F);
 int compareword(word dest, word src, byte F);
 
-void wordtonum(word *destA, word *destX);
-void numtochar(word *destA, word *destX);
-
 void shiftleftword(word *dest, int M);
 void shiftrightword(word *dest, int M);
 void shiftleftwords(word *destA, word *destX, int M);
@@ -96,9 +82,10 @@ void shiftrightwords(word *destA, word *destX, int M);
 void shiftleftcirc(word *destA, word *destX, int M);
 void shiftrightcirc(word *destA, word *destX, int M);
 
+void wordtonum(word *destA, word *destX);
+void numtochar(word *destA, word *destX);
 
-
-void initmix(mix *mix);
 byte mixcharcode(char c);
+void initmix(mix *mix);
 void onestep(mix *mix);
 #endif
