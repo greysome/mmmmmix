@@ -40,19 +40,19 @@ void testemulator() {
   // Examples taken from TAOCP vol 1, p129
   mix.mem[1000] = WORD(false, 1, 2, 3, 4, 5);
 
-  loadword(&mix.A, mix.mem[1000], 5);
+  loadword(&mix.A, mix.mem[1000]);
   assert(mix.A == WORD(false, 1, 2, 3, 4, 5));
-  loadword(&mix.A, mix.mem[1000], 13);
+  loadword(&mix.A, applyfield(mix.mem[1000], 13));
   assert(mix.A == WORD(true, 1, 2, 3, 4, 5));
-  loadword(&mix.A, mix.mem[1000], 29);
+  loadword(&mix.A, applyfield(mix.mem[1000], 29));
   assert(mix.A == WORD(true, 0, 0, 3, 4, 5));
-  loadword(&mix.A, mix.mem[1000], 3);
+  loadword(&mix.A, applyfield(mix.mem[1000], 3));
   assert(mix.A == WORD(false, 0, 0, 1, 2, 3));
-  loadword(&mix.Is[0], mix.mem[1000], 36);
+  loadword(&mix.Is[0], applyfield(mix.mem[1000], 36));
   assert(mix.Is[0] == WORD(true, 0, 0, 0, 0, 4));
-  loadword(&mix.Is[0], mix.mem[1000], 0);
+  loadword(&mix.Is[0], applyfield(mix.mem[1000], 0));
   assert(mix.Is[0] == WORD(false, 0, 0, 0, 0, 0));
-  loadword(&mix.Is[0], mix.mem[1000], 9);
+  loadword(&mix.Is[0], applyfield(mix.mem[1000], 9));
   assert(mix.Is[0] == WORD(true, 0, 0, 0, 0, 1));
 
   // TEST: storing words
@@ -86,78 +86,78 @@ void testemulator() {
   // 1. Both positive, no overflow
   mix.A = WORD(true, 19, 18, 1, 2, 22);
   w     = WORD(true,  1, 36, 5, 0, 50);
-  bool overflow = addword(&mix.A, w, 5);
+  bool overflow = addword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(true, 20, 54, 6, 3, 8));
 
   // 2. Both positive, overflow
   mix.A = WORD(true, 19, 18, 1, 2, 22);
   w     = WORD(true, 50, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(overflow);
   assert(mix.A == WORD(true, 5, 54, 6, 3, 8));
 
   // 4. Both negative, overflow
   mix.A = WORD(false, 19, 18, 1, 2, 22);
   w     = WORD(false, 50, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(overflow);
   assert(mix.A == WORD(false, 5, 54, 6, 3, 8));
 
   // 5. X-Y, X>Y
   mix.A = WORD( true, 19, 18, 1, 2, 22);
   w     = WORD(false,  1, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(true, 17, 45, 60, 1, 36));
 
   // 6. X-Y, X<Y
   mix.A = WORD( true, 19, 18, 1, 2, 22);
   w     = WORD(false, 50, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(false, 31, 18, 3, 62, 28));
 
   // 7. -X+Y, X>Y
   mix.A = WORD(false, 19, 18, 1, 2, 22);
   w     = WORD( true,  1, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(false, 17, 45, 60, 1, 36));
 
   // 8. -X+Y, X<Y
   mix.A = WORD(false, 19, 18, 1, 2, 22);
   w     = WORD( true, 50, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 5);
+  overflow = addword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(true, 31, 18, 3, 62, 28));
 
   // 9. Partial fields
   mix.A = WORD( true, 19, 18, 1, 2, 22);
   w     = WORD(false,  1, 36, 5, 0, 50);
-  overflow = addword(&mix.A, w, 27);
+  overflow = addword(&mix.A, applyfield(w, 27));
   assert(!overflow);
   assert(mix.A == WORD(true, 19, 18, 1, 2, 27));
 
   // 10. Result = 0, sign of A should be unchanged
   mix.A = WORD( true, 0, 0, 0, 0, 5);
   w     = WORD(false, 0, 0, 0, 0, 5);
-  addword(&mix.A, w, 5);
+  addword(&mix.A, w);
   assert(mix.A == WORD(true, 0, 0, 0, 0, 0));
 
   mix.A = WORD(false, 0, 0, 0, 0, 5);
   w     = WORD( true, 0, 0, 0, 0, 5);
-  addword(&mix.A, w, 5);
+  addword(&mix.A, w);
   assert(mix.A == WORD(false, 0, 0, 0, 0, 0));
 
   mix.A = WORD(true, 63, 63, 63, 63, 63);
   w     = WORD(true,  0,  0,  0,  0, 1);
-  addword(&mix.A, w, 5);
+  addword(&mix.A, w);
   assert(mix.A == WORD(true, 0, 0, 0, 0, 0));
 
   mix.A = WORD(false, 63, 63, 63, 63, 63);
   w     = WORD(false,  0,  0,  0,  0,  1);
-  addword(&mix.A, w, 5);
+  addword(&mix.A, w);
   assert(mix.A == WORD(false, 0, 0, 0, 0, 0));
 
   // TEST: negating words
@@ -167,20 +167,20 @@ void testemulator() {
   // TEST: subtracting words
   mix.A = WORD(false, 19, 18, 1, 2, 22);
   w     = WORD(false, 50, 36, 5, 0, 50);
-  overflow = subword(&mix.A, w, 5);
+  overflow = subword(&mix.A, w);
   assert(!overflow);
   assert(mix.A == WORD(true, 31, 18, 3, 62, 28));
 
   // TEST: multiplication of words
   mix.A = WORD(false, 50, 0, 1, 48, 4);
   w     = WORD(false,  2, 0, 0,  0, 0);
-  mulword(&mix.A, &mix.X, w, 5);
+  mulword(&mix.A, &mix.X, w);
   assert(mix.A == WORD(true, 1, 36, 0, 3, 32));
   assert(mix.X == WORD(true, 8, 0, 0, 0, 0));
 
   mix.A = WORD(false, 0, 0, 0, 1, 48);
   w     = WORD(false, 2, 9, 9, 9,  9);
-  mulword(&mix.A, &mix.X, w, 9);
+  mulword(&mix.A, &mix.X, applyfield(w, 9));
   assert(mix.A == WORD(false, 0, 0, 0, 0, 0));
   assert(mix.X == WORD(false, 0, 0, 0, 3, 32));
 
@@ -188,7 +188,7 @@ void testemulator() {
   mix.A = NEG(0);
   mix.X = POS(17);
   w = POS(3);
-  overflow = divword(&mix.A, &mix.X, w, 5);
+  overflow = divword(&mix.A, &mix.X, w);
   assert(!overflow);
   assert(mix.A == NEG(5));
   assert(mix.X == NEG(2));
@@ -196,24 +196,24 @@ void testemulator() {
   mix.A = POS(1);
   mix.X = POS(2);
   w = POS(0);
-  overflow = divword(&mix.A, &mix.X, w, 5);
+  overflow = divword(&mix.A, &mix.X, w);
   assert(overflow);
 
   mix.A = POS(5000);
   mix.X = POS(0);
   w = POS(1);
-  overflow = divword(&mix.A, &mix.X, w, 5);
+  overflow = divword(&mix.A, &mix.X, w);
   assert(overflow);
 
   // TEST: comparing words
   w      = WORD(false, 1, 2, 3, 4, 6);
   word v = WORD( true, 1, 2, 3, 4, 5);
-  assert(compareword(v, w, 5) == 1);
-  assert(compareword(w, v, 5) == -1);
-  assert(compareword(v, w, 13) == -1);
-  assert(compareword(v, w, 12) == 0);
-  assert(compareword(v, w, 4) == 1);
-  assert(compareword(v, w, 0) == 0);
+  assert(compareword(v, w) == 1);
+  assert(compareword(w, v) == -1);
+  assert(compareword(applyfield(v, 13), applyfield(w, 13)) == -1);
+  assert(compareword(applyfield(v, 12), applyfield(w, 12)) == 0);
+  assert(compareword(applyfield(v, 4), applyfield(w, 4)) == 1);
+  assert(compareword(applyfield(v, 0), applyfield(w, 0)) == 0);
 
   // TEST: word to num
   mix.A = WORD(false,  0,  0, 31, 32, 39);
@@ -472,69 +472,69 @@ void testassembler() {
   assert(parseW(&line, &w, &ps));
   assert(w == POS(1));
 
-  bool debuggable;
+  extraparseinfo extraparseinfo;
   // TEST: parseline
   initparsestate(&ps);
   line = "START NOP\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numsyms == 1);
   assert(!strcmp(ps.syms[0], "START"));
   assert(ps.symvals[0] == POS(ps.star-1));
 
   line = "TEN EQU 10\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numsyms == 2);
   assert(!strcmp(ps.syms[1], "TEN"));
   assert(ps.symvals[1] == POS(10));
 
   line = " CON 1337\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numsyms == 2);
   assert(mix.mem[ps.star-1] == POS(1337));
 
   line = " ALF A2J5S\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(mix.mem[ps.star-1] == WORD(true,1,32,11,35,22));
 
   line = " ORIG 2000\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.star == 2000);
 
   line = " ORIG 9999\n";
-  assert(!parseline(line, &ps, &mix, &debuggable));
+  assert(!parseline(line, &ps, &mix, &extraparseinfo));
 
   line = "==INVALID LINE==";
-  assert(!parseline(line, &ps, &mix, &debuggable));
+  assert(!parseline(line, &ps, &mix, &extraparseinfo));
 
   line = "* COMMENT";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
 
   ps.star = 3000;
   line = " STA 2000(1:5)\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(mix.mem[3000] == INSTR(ADDR(2000), 0, 13, 24));
 
   // TEST: future references
   initparsestate(&ps);
   line = " JMP FUTURE\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numfuturerefs == 1);
   assert(!ps.futurerefs[0].resolved);
   assert(ps.futurerefs[0].addr == 0);
   assert(!ps.futurerefs[0].which);
   assert(!strcmp(ps.futurerefs[0].sym, "FUTURE"));
   line = "FUTURE NOP\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numfuturerefs == 2);
   line = " JMP =2000=\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.numfuturerefs == 3);
   assert(ps.futurerefs[2].which);
   assert(ps.futurerefs[2].literal == POS(2000));
   line = "FOO END 1000\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.futurerefs[0].resolved);
   assert(ps.futurerefs[1].resolved);
   assert(getA(mix.mem[0]) == (1|(1<<12)));
@@ -549,37 +549,37 @@ void testassembler() {
   // TEST: local symbols
   initparsestate(&ps);
   line = "1H NOP\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.localsymcounts[1] == 1);
   assert(lookupsym("1H#0", &w, &ps));
   assert(w == POS(0));
   line = " JMP 1F\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   line = " JMP 1B\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   line = "2H NOP\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.localsymcounts[2] == 1);
   assert(lookupsym("2H#0", &w, &ps));
   assert(w == POS(3));
   line = "1H NOP\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(ps.localsymcounts[1] == 2);
   assert(lookupsym("1H#1", &w, &ps));
   assert(w == POS(4));
   line = " END 1000\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(getA(mix.mem[1]) == (4|(1<<12)));
   assert(getA(mix.mem[2]) == (0|(1<<12)));
 
   // TEST: multiple of the same undefined symbol
   initparsestate(&ps);
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   line = " JMP UNDEFINED\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   line = " END 1000\n";
-  assert(parseline(line, &ps, &mix, &debuggable));
+  assert(parseline(line, &ps, &mix, &extraparseinfo));
   assert(getA(mix.mem[0]) == (2|(1<<12)));
   assert(getA(mix.mem[1]) == (2|(1<<12)));
 }

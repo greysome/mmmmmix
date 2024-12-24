@@ -28,6 +28,12 @@ typedef struct {
   int localsymcounts[10];  // The current number of instances of each local sym nH.
 } parsestate;
 
+// Returned by reference in parseline() for mmm to use.
+typedef struct {
+  bool setdebugline;
+  bool isend;
+} extraparseinfo;
+
 void initparsestate(parsestate *ps);
 
 bool lookupsym(char *sym, word *val, parsestate *ps);
@@ -47,5 +53,5 @@ bool parseI(char **s, word *val, parsestate *ps);
 bool parseF(char **s, word *val, parsestate *ps);
 bool parseW(char **s, word *val, parsestate *ps);
 
-bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable);
+bool parseline(char *line, parsestate *ps, mix *mix, extraparseinfo *extraparseinfo);
 #endif

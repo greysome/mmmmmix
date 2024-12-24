@@ -221,28 +221,28 @@ start:
   if (prevsign == '\0')
     final = w;
   else if (prevsign == '+')
-    addword(&final, w, 5);
+    addword(&final, w);
   else if (prevsign == '-')
-    subword(&final, w, 5);
+    subword(&final, w);
   else if (prevsign == '*') {
     word v;
-    mulword(&final, &v, w, 5);
+    mulword(&final, &v, w);
     final = v;
   }
   else if (prevsign == '/') {
     word v = POS(0);
-    divword(&v, &final, w, 5);
+    divword(&v, &final, w);
     final = v;
   }
   else if (prevsign == ':') {
     word v;
-    mulword(&final, &v, POS(8), 5);
-    addword(&v, w, 5);
+    mulword(&final, &v, POS(8));
+    addword(&v, w);
     final = v;
   }
   else if (prevsign == '|') {
     word v = POS(0);
-    divword(&final, &v, w, 5);
+    divword(&final, &v, w);
   }
 
   if (**s == '+' || **s == '-' || **s == '*' || **s == ':' ||
@@ -372,16 +372,11 @@ err:
 
 // Parse line, returning the status and updating the parse state and
 // mix instance.
-// For debugging purposes, the return parameter `debuggable` is set to
-// true if the line parsed corresponds to an instruction/constant/alf
-// in memory. For example, an ORIG or END line will have debuggable
-// set to false.
-bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
-  *debuggable = true;
-  if (line[0] == '*') { // Ignore comments
-    *debuggable = false;
+bool parseline(char *line, parsestate *ps, mix *mix, extraparseinfo *extraparseinfo) {
+  extraparseinfo->setdebugline = false;
+  extraparseinfo->isend = false;
+  if (line[0] == '*')  // Ignore comments
     return true;
-  }
 
   char sym[11], op[5];
   word val;
@@ -414,7 +409,6 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
     if (!parseW(&line, &val, ps))
       return false;
     addsym(sym, val, ps);
-    *debuggable = false;
   }
   else if (!strcmp(op, "ORIG")) {
     if (parseLOC)
@@ -424,7 +418,6 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
     if (INT(val) < 0 || INT(val) >= 4000)
       return false;
     ps->star = INT(val);
-    *debuggable = false;
   }
   else if (!strcmp(op, "CON")) {
     if (parseLOC)
@@ -432,6 +425,7 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
     if (!parseW(&line, &val, ps))
       return false;
     mix->mem[ps->star++] = val;
+    extraparseinfo->setdebugline = true;
   }
   else if (!strcmp(op, "ALF")) {
     if (parseLOC)
@@ -442,6 +436,7 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
     for (int i = 0; i < 5; i++)
       alf[i] = mixcharcode(alf[i]);
     mix->mem[ps->star++] = WORD(true, alf[0], alf[1], alf[2], alf[3], alf[4]);
+    extraparseinfo->setdebugline = true;
   }
   else if (!strcmp(op, "END")) {
     // Handle future references
@@ -484,8 +479,8 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
       return false;
     if (INT(val) < 0 || INT(val) >= 4000)
       return false;
-    *debuggable = false;
     mix->PC = INT(val);
+    extraparseinfo->isend = true;
   }
   else {  // Parse a normal MIX operation
     if (parseLOC)
@@ -496,6 +491,7 @@ bool parseline(char *line, parsestate *ps, mix *mix, bool *debuggable) {
     if (INT(I) < 0 || INT(I) > 6) return false;
     if (INT(F) < 0 || INT(F) >= 64) return false;
     mix->mem[ps->star++] = INSTR(ADDR(INT(A)), (byte)I, INT(F), INT(C));
+    extraparseinfo->setdebugline = true;
   }
 
   return true;

@@ -66,14 +66,14 @@ word getM(word instr, mix *mix);
 
 // Return the portion of w specified by the field F.
 word applyfield(word w, byte F);
-void loadword(word *dest, word src, byte F);
+void loadword(word *dest, word src);
 void storeword(word *dest, word src, byte F);
 word negword(word w);
-bool addword(word *dest, word src, byte F);
-bool subword(word *dest, word src, byte F);
-void mulword(word *destA, word *destX, word src, byte F);
-bool divword(word *destA, word *destX, word src, byte F);
-int compareword(word dest, word src, byte F);
+bool addword(word *dest, word src);
+bool subword(word *dest, word src);
+void mulword(word *destA, word *destX, word src);
+bool divword(word *destA, word *destX, word src);
+int compareword(word dest, word src);
 
 void shiftleftword(word *dest, int M);
 void shiftrightword(word *dest, int M);

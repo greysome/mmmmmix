@@ -52,8 +52,8 @@ word applyfield(word w, byte F) {
     return POS(v);
 }
 
-void loadword(word *dest, word src, byte F) {
-  *dest = applyfield(src, F);
+void loadword(word *dest, word src) {
+  *dest = src;
 }
 
 void storeword(word *dest, word src, byte F) {
@@ -74,8 +74,7 @@ word negword(word w) {
   return WITHSIGN(w, !SIGN(w));
 }
 
-bool addword(word *dest, word src, byte F) {
-  src = applyfield(src, F);
+bool addword(word *dest, word src) {
   bool sign1 = SIGN(*dest);
   bool sign2 = SIGN(src);
   word w1 = MAG(*dest);
@@ -127,24 +126,22 @@ word getM(word instr, mix *mix) {
   byte I = getI(instr);
   if (I == 0)
     return A;
-  addword(&A, *Iaddr(I, mix), 5);
+  addword(&A, *Iaddr(I, mix));
   return A;
 }
 
-bool subword(word *dest, word src, byte F) {
-  return addword(dest, negword(src), F);
+bool subword(word *dest, word src) {
+  return addword(dest, negword(src));
 }
 
-void mulword(word *destA, word *destX, word src, byte F) {
-  src = applyfield(src, F);
+void mulword(word *destA, word *destX, word src) {
   uint64_t prod = (uint64_t)MAG(*destA) * MAG(src);
   bool prodsign = SIGN(*destA) == SIGN(src);
   *destA = WITHSIGN((prod >> 30) & ONES(30), prodsign);
   *destX = WITHSIGN(prod & ONES(30),         prodsign);
 }
 
-bool divword(word *destA, word *destX, word src, byte F) {
-  src = applyfield(src, F);
+bool divword(word *destA, word *destX, word src) {
   if (MAG(src) == 0)
     return true;
   uint64_t w = COMBINE(*destA, *destX);
@@ -158,18 +155,16 @@ bool divword(word *destA, word *destX, word src, byte F) {
   return false;
 }
 
-int compareword(word dest, word src, byte F) {
-  word w1 = applyfield(dest, F);
-  word w2 = applyfield(src, F);
-  bool sign1 = SIGN(w1);
-  bool sign2 = SIGN(w2);
-  w1 = MAG(w1);
-  w2 = MAG(w2);
-  if (w1 == 0 && w2 == 0) return 0;
+int compareword(word dest, word src) {
+  bool sign1 = SIGN(dest);
+  bool sign2 = SIGN(src);
+  dest = MAG(dest);
+  src = MAG(src);
+  if (dest == 0 && src == 0) return 0;
   if (sign1 == sign2) {
-    if (w1 == w2) return 0;
-    if (w1 > w2) return sign1 ? 1 : -1;
-    if (w1 < w2) return sign1 ? -1 : 1;
+    if (dest == src) return 0;
+    if (dest > src) return sign1 ? 1 : -1;
+    if (dest < src) return sign1 ? -1 : 1;
   }
   if (sign1 && !sign2) return 1;
   if (!sign1 && sign2) return -1;
@@ -385,8 +380,8 @@ void onestep(mix *mix) {
   word M = getM(instr, mix);
 
   // We don't want to evaluate V straight away, because INT(M) may not
-  // be a valid address for instructions like INC
-#define V() mix->mem[INT(M)]
+  // be a valid address for instructions like ENTA
+#define V() applyfield(mix->mem[INT(M)], F)
 
   mix->execcounts[mix->PC]++;
 #define LOGTIME(t) mix->exectimes[mix->PC] += (t)
@@ -397,25 +392,25 @@ void onestep(mix *mix) {
   else if (C == 1) {                            // ADD
     LOGTIME(2);
     CHECKADDR(INT(M))
-    mix->overflow = addword(&mix->A, V(), F);
+    mix->overflow = addword(&mix->A, V());
   }
 
   else if (C == 2) {                            // SUB
     LOGTIME(2);
     CHECKADDR(INT(M))
-    mix->overflow = subword(&mix->A, V(), F);
+    mix->overflow = subword(&mix->A, V());
   }
 
   else if (C == 3) {                            // MUL
     LOGTIME(10);
     CHECKADDR(INT(M))
-    mulword(&mix->A, &mix->X, V(), F);
+    mulword(&mix->A, &mix->X, V());
   }
 
   else if (C == 4) {                            // DIV
     LOGTIME(12);
     CHECKADDR(INT(M))
-    mix->overflow = divword(&mix->A, &mix->X, V(), F);
+    mix->overflow = divword(&mix->A, &mix->X, V());
   }
 
   else if (C == 5) {
@@ -471,13 +466,13 @@ void onestep(mix *mix) {
   else if (8 <= C && C <= 15) {                 // LDx
     LOGTIME(2);
     CHECKADDR(INT(M))
-    loadword(Iaddr(C-8, mix), V(), F);
+    loadword(Iaddr(C-8, mix), V());
   }
 
   else if (16 <= C && C <= 23) {                // LDxN
     LOGTIME(2);
     CHECKADDR(INT(M))
-    loadword(Iaddr(C-16, mix), negword(V()), F);
+    loadword(Iaddr(C-16, mix), negword(V()));
     // If sign is not part of F, make the word negative.
     if ((F>>3) & ONES(3) >= 1)
       *Iaddr(C-16, mix) = NEG(*Iaddr(C-16, mix));
@@ -607,9 +602,9 @@ skip:
   else if (48 <= C && C <= 55) {
     LOGTIME(1);
     if (F == 0)                                 // INCx
-      mix->overflow = addword(Iaddr(C-48, mix), M, 5);
+      mix->overflow = addword(Iaddr(C-48, mix), M);
     else if (F == 1)                            // DECx
-      mix->overflow = subword(Iaddr(C-48, mix), M, 5);
+      mix->overflow = subword(Iaddr(C-48, mix), M);
     else if (F == 2)                            // ENTx
       *Iaddr(C-48, mix) = M;
     else if (F == 3)                            // ENNx
@@ -623,7 +618,7 @@ skip:
   else if (56 <= C && C <= 63) {                // CMPx
     LOGTIME(2);
     CHECKADDR(INT(M))
-    mix->cmp = compareword(*Iaddr(C-56, mix), V(), F);
+    mix->cmp = compareword(applyfield(*Iaddr(C-56, mix), F), V());
   }
 
   else {
