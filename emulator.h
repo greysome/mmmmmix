@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stdlib.h>
 
 int max(int a, int b);
 
@@ -27,11 +28,18 @@ typedef uint32_t word;
 #define COMBINE(w,v) ((MAG(w) << 30) | MAG(v))
 #define INT(w) (SIGN(w) ? MAG(w) : -MAG(w))
 
+// Data relevant to the operation of each IO device
+typedef struct {
+  word M, F, C;
+  int totaltime, timer;
+  char *err;
+} IOthread;
+
 typedef struct {
   bool done;
   char *err;
-  int PC;         // Program counter
 
+  int PC;  // Program counter
   // Keep track of the execution counts and times of each memory cell.
   int execcounts[4000];
   int exectimes[4000];
@@ -44,7 +52,14 @@ typedef struct {
   // (Technically the I and J registers only have 2 bytes, but it is
   //  convenient to reuse the word type.)
   word mem[4000];
-  FILE *cardfile; // File to read "cards" from
+
+  FILE *cardfile;     // File that stores a deck of cards
+  FILE *tapefiles[8]; // Files that store tape data
+  IOthread iothreads[21];
+
+  int INtimes[21];
+  int OUTtimes[21];
+  int IOCtimes[21];
 } mix;
 
 // Construct a 13-bit value consisting of a sign and 2 bytes.
@@ -85,7 +100,7 @@ void shiftrightcirc(word *destA, word *destX, int M);
 void wordtonum(word *destA, word *destX);
 void numtochar(word *destA, word *destX);
 
-byte mixcharcode(char c);
+byte mixord(char c);
 void initmix(mix *mix);
 void onestep(mix *mix);
 #endif

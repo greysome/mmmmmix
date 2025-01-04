@@ -5,12 +5,13 @@
 
 typedef struct {
   mix mix;
+  parsestate ps;
+  char prevline[LINELEN];
   char globalcardfile[LINELEN];
+  char globaltapefiles[8][LINELEN];
   char debuglines[4000][LINELEN];
   bool shouldtrace;
 } mmmstate;
-
-static mmmstate mmm;
 
 #define RED(s)    "\033[31m" s "\033[37m"
 #define GREEN(s)  "\033[32m" s "\033[37m"
@@ -330,7 +331,9 @@ void displayaddr_verbose(int i, mmmstate *mmm) {
     printf("  ");
     displayword(mmm->mix.mem[i]);
     printf("  ");
-    if (INT(mmm->mix.mem[i]) >= 10000 || (int)INT(mmm->mix.mem[i]) <= -1000)
+    // If the number of chars to display the integer value of memory
+    // contents exceeds a certain amount
+    if (INT(mmm->mix.mem[i]) >= 100000 || (int)INT(mmm->mix.mem[i]) <= -10000)
       printf("(%d)\t", INT(mmm->mix.mem[i]));
     else
       printf("(%d)\t\t", INT(mmm->mix.mem[i]));
@@ -345,7 +348,7 @@ void displayaddr_verbose(int i, mmmstate *mmm) {
     printf("  ");
     displayword(mmm->mix.mem[i]);
     printf("\033[37m  ");
-    if (INT(mmm->mix.mem[i]) >= 10000 || (int)INT(mmm->mix.mem[i]) <= -1000)
+    if (INT(mmm->mix.mem[i]) >= 100000 || (int)INT(mmm->mix.mem[i]) <= -10000)
       printf(CYAN("(%d)\t"), INT(mmm->mix.mem[i]));
     else
       printf(CYAN("(%d)\t\t"), INT(mmm->mix.mem[i]));
@@ -355,33 +358,70 @@ void displayaddr_verbose(int i, mmmstate *mmm) {
 }
 
 void printregisters(mmmstate *mmm) {
-  printf(" A: "); displayword(mmm->mix.A);
-  printf("\t("); printf("%d", INT(mmm->mix.A));
-  printf(")\n X: "); displayword(mmm->mix.X);
-  printf("\t("); printf("%d", INT(mmm->mix.X));
-  printf(")\nI1: "); displayshort(mmm->mix.Is[0]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[0]));
-  printf(")\nI2: "); displayshort(mmm->mix.Is[1]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[1]));
-  printf(")\nI3: "); displayshort(mmm->mix.Is[2]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[2]));
-  printf(")\nI4: "); displayshort(mmm->mix.Is[3]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[3]));
-  printf(")\nI5: "); displayshort(mmm->mix.Is[4]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[4]));
-  printf(")\nI6: "); displayshort(mmm->mix.Is[5]);
-  printf("\t("); printf("%d", INT(mmm->mix.Is[5]));
-  printf(")\n J: "); displayshort(mmm->mix.J);
-  printf("\t("); printf("%d", INT(mmm->mix.J));
-  printf(")\n\nOverflow: ");
+  printf(" A: ");
+  printf("\033[33m"); displayword(mmm->mix.A); printf("\033[37m");
+  printf("\t");
+  printf(CYAN("(%d)"), INT(mmm->mix.A));
+
+  printf("\n X: ");
+  printf("\033[33m"); displayword(mmm->mix.X); printf("\033[37m");
+  printf("\t");
+  printf(CYAN("(%d)"), INT(mmm->mix.X));
+
+  printf("\nI1: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[0]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[0]));
+
+  printf("\nI2: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[1]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[1]));
+
+  printf("\nI3: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[2]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[2]));
+
+  printf("\nI4: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[3]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[3]));
+
+  printf("\nI5: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[4]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[4]));
+
+  printf("\nI6: ");
+  printf("\033[33m"); displayshort(mmm->mix.Is[5]); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.Is[5]));
+
+  printf("\n J: ");
+  printf("\033[33m"); displayshort(mmm->mix.J); printf("\033[37m");
+  printf("\t"); printf(CYAN("(%d)"), INT(mmm->mix.J));
+
+  printf("\n\nOverflow: ");
   if (mmm->mix.overflow)
-    printf("ON\n");
+    printf(CYAN("ON\n"));
   else
-    printf("OFF\n");
+    printf(CYAN("OFF\n"));
   printf("Comparison: ");
-  if (mmm->mix.cmp == -1) putchar('<');
-  else if (mmm->mix.cmp == 1) putchar('>');
-  else putchar('=');
+  if (mmm->mix.cmp == -1)
+    printf(CYAN("<"));
+  else if (mmm->mix.cmp == 1)
+    printf(CYAN(">"));
+  else
+    printf(CYAN("="));
+
+  printf("\n\nBusy IO devices:\n");
+  for (int i = 0; i < 21; i++) {
+    IOthread iothread = mmm->mix.iothreads[i];
+    if (iothread.timer == 0)
+      continue;
+    if (iothread.C == 35)
+      printf(GREEN("%d") CYAN("  IOC") "  (%du left)\n", i, iothread.timer);
+    else if (iothread.C == 36)
+      printf(GREEN("%d") CYAN("  IN ") "  (%du left)\n", i, iothread.timer);
+    else if (iothread.C == 37)
+      printf(GREEN("%d") CYAN("  OUT") "  (%du left)\n", i, iothread.timer);
+  }
+
   printf("\nCur instruction:\n");
   displayinstr_debug(mmm->mix.PC, mmm);
 }
@@ -450,44 +490,72 @@ bool onestepwrapper(int tracecount, mmmstate *mmm) {
   return true;
 }
 
-void viewcommand(char *line, mmmstate *mmm) {
+bool getsymvalue(char *s, mmmstate *mmm, word *w) {
+  // Find the symbol in parse state
+  for (int i = 0; i < MAXSYMS; i++) {
+    if (strncmp(s, mmm->ps.syms[i], 11) == 0) {
+      *w = mmm->ps.symvals[i];
+      return true;
+    }
+  }
+  return false;
+}
+
+void viewcommand(char *arg, mmmstate *mmm) {
   // Print all nonzero memory addresses
-  if (line[0] == '\n') {
+  if (arg[0] == '\0') {
     for (int i = 0; i < 4000; i++) {
       if (mmm->mix.mem[i] != POS(0))
 	displayaddr_verbose(i, mmm);
     }
   }
-  // Print selected lines based on arg, where
-  // arg = "<from>-<to>" or "<line>"
-  else {
-    char *fromstart = line, *tostart;
+  // Print selected addresses based on arg, where
+  // arg = "<from>-<to>" or "<arg>"
+  else if (isdigit(arg[0])) {
+    char *fromstart = arg, *tostart;
     int from, to;
-    while (!isspace(*line) && *line != '-')
-      line++;
-    if (*line == '-') {
-      *(line++) = '\0';
-      tostart = line;
-      while (!isspace(*(line++))) {};
-      *(line-1) = '\0';
+    while (!isspace(*arg) && *arg != '-')
+      arg++;
+    if (*arg == '-') {
+      *(arg++) = '\0';
+      tostart = arg;
+      while (!isspace(*(arg++))) {};
+      *(arg-1) = '\0';
       from = atoi(fromstart);
       to = atoi(tostart);
     }
     else {
-      *line = '\0';
+      *arg = '\0';
       from = atoi(fromstart);
       to = from;
     }
     for (int i = from; i <= to; i++)
       displayaddr_verbose(i, mmm);
   }
+  // Print address corresponding to the given symbol
+  else if (arg[0] == '.') {
+    word w;
+    if (getsymvalue(arg+1, mmm, &w))
+      displayaddr_verbose(INT(w), mmm);
+    else
+      printf(BLUE("I'm not aware of the symbol %s\n"), arg);
+  }
 }
 
-void breakpointcommand(char *line, mmmstate *mmm) {
-  char *start = line;
-  while (!isspace(*line)) line++;
-  *line = '\0';
-  int bp = atoi(start);
+void breakpointcommand(char *arg, mmmstate *mmm) {
+  int bp;
+  if (isdigit(arg[0])) {
+    bp = atoi(arg);
+  }
+  else if (arg[0] == '.') {
+    word w;
+    if (!getsymvalue(arg+1, mmm, &w)) {
+      printf(BLUE("I'm not aware of the symbol %s\n"), arg);
+      return;
+    }
+    bp = INT(w);
+  }
+
   if (bp < 0 || bp >= 4000) {
     printf(RED("Breakpoint must be between 0-4000\n"));
     return;
@@ -496,6 +564,21 @@ void breakpointcommand(char *line, mmmstate *mmm) {
     if (!onestepwrapper(0, mmm))
       break;
   } while (mmm->mix.PC != bp);
+  displayinstr_debug(bp, mmm);
+}
+
+void gocommand(char *arg, mmmstate *mmm) {
+  int tracecount;
+  if (isdigit(arg[0]))
+    tracecount = arg[0] - '0';
+  else if (arg[0] == '+')
+    tracecount = 2147483647;
+  else
+    tracecount = 0;
+  mmm->shouldtrace = true;
+  while (!mmm->mix.done)
+    onestepwrapper(tracecount, mmm);
+  printf(GREEN("Program has finished running; type l to reset\n"));
 }
 
 bool loadcardfile(char *filename, mmmstate *mmm) {
@@ -513,10 +596,28 @@ bool loadcardfile(char *filename, mmmstate *mmm) {
   return true;
 }
 
+bool loadtapefile(char *filename, int n, mmmstate *mmm) {
+  if (filename[0] == '\0')
+    return true;
+  if (n < 0 || n > 7) {
+    printf(RED("Invalid tape number %d\n"), n);
+    return false;
+  }
+  FILE *fp;
+  if ((fp = fopen(filename, "r+")) == NULL) {
+    printf(RED("Could not open tape file %s\n"), filename);
+    return false;
+  }
+  printf(GREEN("Loaded tape file %s\n"), filename);
+  if (mmm->mix.tapefiles[n])
+    fclose(mmm->mix.tapefiles[n]);
+  mmm->mix.tapefiles[n] = fp;
+  return true;
+}
+
 bool loadmixalfile(char *filename, mmmstate *mmm) {
   initmix(&mmm->mix);
-  parsestate ps;
-  initparsestate(&ps);
+  initparsestate(&mmm->ps);
 
   FILE *fp;
   if ((fp = fopen(filename, "r")) == NULL) {
@@ -527,15 +628,15 @@ bool loadmixalfile(char *filename, mmmstate *mmm) {
   char line[LINELEN];
   extraparseinfo extraparseinfo;
   while (++linenum && fgets(line, LINELEN, fp) != NULL) {
-    if (!parseline(line, &ps, &mmm->mix, &extraparseinfo)) {
+    if (!parseline(line, &mmm->ps, &mmm->mix, &extraparseinfo)) {
       printf(RED("Assembler error at line %d: %s"), linenum, line);
       initmix(&mmm->mix);
       return false;
     }
     if (extraparseinfo.setdebugline) {
-      strncpy(mmm->debuglines[ps.star-1], line, LINELEN);
+      strncpy(mmm->debuglines[mmm->ps.star-1], line, LINELEN);
       int len = strlen(line);
-      mmm->debuglines[ps.star-1][len-1] = '\0';
+      mmm->debuglines[mmm->ps.star-1][len-1] = '\0';
     }
     if (extraparseinfo.isend)
       break;
@@ -545,28 +646,52 @@ bool loadmixalfile(char *filename, mmmstate *mmm) {
 }
 
 void printhelp() {
-  printf("Commands:\n");
-  printf("l\t\treload mixal and card file\n");
-  printf("@<file>\t\tload new card file\n");
-  printf("s\t\trun one step\n");
-  printf("b<line>\t\trun till breakpoint\n");
-  printf("g, g<n>\t\trun whole program, optionally tracing the first n executions of each line\n");
-  printf("v<start>-<end>\tview memory cells\nv<line>\n");
-  printf("r\t\tview registers and flags\n");
-  printf("t\t\tprint timing statistics\n");
-  printf("h\t\tprint this help\n");
-  printf("q\t\tquit\n");
+  printf(
+    CYAN("COMMANDS:\n")
+    "<empty>\t\trepeat previous command\n"
+    "l\t\treload MIXAL and card file\n"
+    "@<file>\t\tload new card file\n"
+    "s\t\trun one step\n"
+    "b<line>\t\trun till specified line\n"
+    "b.<sym>\t\trun till specified line\n"
+    "g\t\trun whole program\n"
+    "g<n>\t\ttrace first n executions of each line (n is a digit)\n"
+    "g+\t\ttrace everything\n"
+    "v\t\tview nonempty memory cells\n"
+    "v<line>\t\tview specific cell\n"
+    "v.<sym>\t\tview specific cell\n"
+    "v<from>-<to>\tview a range of cells\n"
+    "r\t\tview registers and flags\n"
+    "t\t\tprint timing statistics\n"
+    "h\t\tprint this help\n"
+    "q\t\tquit\n"
+  );
 }
 
 void initmmmstate(mmmstate *mmm) {
   // mmm->mix will be initialized in loadmixalfile()
   mmm->globalcardfile[0] = '\0';
+  for (int i = 0; i < 8; i++)
+    mmm->globaltapefiles[i][0] = '\0';
+  mmm->prevline[0] = '\0';
   for (int i = 0; i < 4000; i++)
     mmm->debuglines[i][0] = '\0';
   mmm->shouldtrace = true;
+
+  // Default IO operation times
+  mmm->mix.INtimes[16] = 10000;
+  mmm->mix.IOCtimes[18] = 10000;
+  mmm->mix.OUTtimes[18] = 7500;
+  // I chose a value arbitrarily for tape IO because I haven't seen an
+  // official figure yet
+  for (int i = 0; i < 8; i++) {
+    mmm->mix.INtimes[i] = 30000;
+    mmm->mix.OUTtimes[i] = 30000;
+  }
 }
 
 int main(int argc, char **argv) {
+  mmmstate mmm;
   initmmmstate(&mmm);
 
   // Handle arguments
@@ -586,8 +711,15 @@ int main(int argc, char **argv) {
   while (true) {
     printf(">> ");
     fgets(line, LINELEN, stdin);
+    // Strip the last newline
+    line[strnlen(line, LINELEN)-1] = '\0';
     if (feof(stdin))
       return 0;
+
+    if (line[0] == '\0') {      // Previous command
+      strncpy(line, mmm.prevline, LINELEN);
+    }
+    strncpy(mmm.prevline, line, LINELEN);
 
     if (line[0] == 'l') {       // Reload MIXAL and card file
       if (!loadmixalfile(argv[1], &mmm))
@@ -595,10 +727,17 @@ int main(int argc, char **argv) {
       loadcardfile(mmm.globalcardfile, &mmm);
     }
     else if (line[0] == '@') {  // Load new card file
-      // Remove the last \n from line
-      line[strnlen(line, LINELEN)-1] = '\0';
       if (loadcardfile(line+1, &mmm))
 	strncpy(mmm.globalcardfile, line+1, LINELEN);
+    }
+    else if (line[0] == '#') {  // Load new tape file
+      if (line[1] == '\0')
+	printf(RED("You have to provide a tape number!\n"));
+      else {
+	int n = line[1]-'0';
+	if (loadtapefile(line+2, n, &mmm))
+	  strncpy(mmm.globaltapefiles[n], line+2, LINELEN);
+      }
     }
     else if (line[0] == 's') {  // Run one step
       if (mmm.mix.done) {
@@ -611,15 +750,7 @@ int main(int argc, char **argv) {
     else if (line[0] == 'b')    // Run till breakpoint
       breakpointcommand(line+1, &mmm);
     else if (line[0] == 'g') {  // Run whole program
-      int tracecount;
-      if (isdigit(line[1]))
-	tracecount = line[1] - '0';
-      else
-	tracecount = 0;
-      mmm.shouldtrace = true;
-      while (!mmm.mix.done)
-	onestepwrapper(tracecount, &mmm);
-      printf(GREEN("Program has finished running; type l to reset\n"));
+      gocommand(line+1, &mmm);
     }
     else if (line[0] == 'v')    // View memory
       viewcommand(line+1, &mmm);

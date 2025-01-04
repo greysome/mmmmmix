@@ -1,0 +1,502 @@
+* Knuth's MIX simulator from 1.4.3.1, modified according to the exercises.
+*
+* I've also added the ability to load MIX programs from punched cards;
+* any positive word is allowed. To accomodate the missing character
+* codes, I've mapped a-h to 56-63, as well as the non-Unicode
+* alternatives of !,[,] to 10,20,21 respectively. The program must end
+* with a card with "....."  as the first word. Any cards read in by
+* the program can be appended at the end.
+*
+* MIX SIMULATOR
+	ORIG	3400		Used to be 3500, sorry I need a little more space ><
+CARDREAD	EQU	16
+PRINTER	EQU	18
+FIVEK	CON	5000
+HALF7500	CON	3750
+EOF	ALF  .....
+BEGIN	ENT1	0
+1H	IN	0,1(CARDREAD)	Load the MIXAL program to be simulated from card deck
+	JBUS	*(CARDREAD)
+	LDA	EOF
+	CMPA	0,1		Last card is indicated by ..... in the first word
+	INC1	16
+	JNE	1B
+	ENT1	0
+	ENTA	0
+	STZ	TIME(0:2)
+	STZ	OVTOG
+	STZ	COMPI
+	ENT6	0
+	ENT4	0
+* 1.4.3.1-6: update IO timers
+* (and only begin IO transmission when half the time has elapsed, 1.4.3.1-7)
+CYCLE   LDA	OPTABLE,4(4:4)	Get execution time of previous instruction.
+	STA	7F(0:2)
+	STA	8F(0:2)
+DECIN	LDA	INTIME
+	LDX	INTIME
+7H	DECA	*		Update timer for card reader.
+	CMPX	FIVEK		If old timer >= 5000 and
+	JL	2F
+	CMPA	FIVEK		  new timer < 5000,
+	JGE	2F
+	LDX	INADDR
+	STX	*+1(0:2)
+	IN	*(CARDREAD)	  finally execute the IN.
+	JBUS	*(CARDREAD)
+2H	JANN	*+2		Make sure timer is not negative.
+	ENTA	0
+	STA	INTIME
+DECOUT	LDA	OUTTIME
+	LDX	OUTTIME
+8H	DECA	*		Update timer for line printer.
+	LD1	PRINTEROP
+	J1NP	3F		IF current printer operator = IOC:
+	CMPX	FIVEK
+	JL	2F		if old timer >= 5000 and
+	CMPA	FIVEK
+	JGE	2F		  new timer < 5000,
+	IOC	0(PRINTER)	  finally execute the IOC.
+	JBUS	0(PRINTER)
+	JMP	2F
+3H	CMPX	HALF7500	ELSE:
+	JL	2F		if old timer >= 3750 and
+	CMPA	HALF7500
+	JGE	2F		  new timer < 3750,
+	LDX	OUTADDR
+	STX	*+1(0:2)
+	OUT	*(PRINTER)	  finally execute the OUT.
+	JBUS	*(PRINTER)
+2H	JANN	*+2		Make sure timer is not negative.
+	ENTA	0
+	STA	OUTTIME
+	JMP	*+2
+*
+	LDA 	CLOCK
+TIME	INCA	0
+	STA	CLOCK
+	LDA	0,6
+	STA	INST
+	INC6	1
+	LDX	INST(1:2)
+	SLAX	5
+	STA	M
+	LD2	INST(3:3)
+	J2Z	1F
+	DEC2	6
+	J2P	INDEXERROR
+	LDA	SIGN6,2
+	LDX	I6REG,2
+	SLAX	5
+	ADD	M
+	CMPA	ZERO(1:3)
+	JNE	ADDRERROR
+	STA	M
+1H	LD3	INST(4:4)
+	LD5	M
+	LD4	INST(5:5)
+	DEC4	63
+	J4P	OPERROR
+	LDA	OPTABLE,4(4:4)
+	STA	TIME(0:2)
+	LD2	OPTABLE,4(0:2)
+	JNOV	0,2
+	JMP	0,2
+* OPERATION CODE TABLE
+	NOP	CYCLE(1)
+	ADD	ADD(2)
+	SUB	SUB(2)
+	MUL	MUL(10)
+	DIV	DIV(12)
+	HLT	SPEC(10)
+	SLA	SHIFT(2)
+	MOVE	MOVE(1)
+	LDA	LOAD(2)
+	LD1	LOAD,1(2)
+	LD2	LOAD,1(2)
+	LD3	LOAD,1(2)
+	LD4	LOAD,1(2)
+	LD5	LOAD,1(2)
+	LD6	LOAD,1(2)
+	LDX	LOAD(2)
+	LDAN	LOAD(2)
+	LD1N	LOAD,1(2)
+	LD2N	LOAD,1(2)
+	LD3N	LOAD,1(2)
+	LD4N	LOAD,1(2)
+	LD5N	LOAD,1(2)
+	LD6N	LOAD,1(2)
+	LDXN	LOAD(2)
+	STA	STORE(2)
+	ST1	STORE(2)
+	ST2	STORE(2)
+	ST3	STORE(2)
+	ST4	STORE(2)
+	ST5	STORE(2)
+	ST6	STORE(2)
+	STX	STORE(2)
+	STJ	STORE(2)
+	STZ	STORE(2)
+	JBUS	JBUS(1)
+	IOC	IOC(1)
+	IN	IN(1)
+	OUT	OUT(1)
+	JRED	JRED(1)
+	JMP	JUMP(1)
+	JAP	REGJUMP(1)
+	J1P	REGJUMP(1)
+	J2P	REGJUMP(1)
+	J3P	REGJUMP(1)
+	J4P	REGJUMP(1)
+	J5P	REGJUMP(1)
+	J6P	REGJUMP(1)
+	JXP	REGJUMP(1)
+	INCA	ADDROP(1)
+	INC1	ADDROP,1(1)
+	INC2	ADDROP,1(1)
+	INC3	ADDROP,1(1)
+	INC4	ADDROP,1(1)
+	INC5	ADDROP,1(1)
+	INC6	ADDROP,1(1)
+	INCX	ADDROP(1)
+	CMPA	COMPARE(2)
+	CMP1	COMPARE(2)
+	CMP2	COMPARE(2)
+	CMP3	COMPARE(2)
+	CMP4	COMPARE(2)
+	CMP5	COMPARE(2)
+	CMP6	COMPARE(2)
+OPTABLE	CMPX	COMPARE(2)
+* SIMULATED REGISTERS
+AREG	CON	0
+I1REG	CON	0
+I2REG	CON	0
+I3REG	CON	0
+I4REG	CON	0
+I5REG	CON	0
+I6REG	CON	0
+XREG	CON	0
+JREG	CON	0
+ZERO	CON	0
+SIGNA	CON	0
+SIGN1	CON	0
+SIGN2	CON	0
+SIGN3	CON	0
+SIGN4	CON	0
+SIGN5	CON	0
+SIGN6	CON	0
+SIGNX	CON	0
+SIGNJ	CON	0
+SIGNZ	CON	0
+INST	CON	0
+COMPI	CON	0
+OVTOG	CON	0
+CLOCK	CON	0
+INTIME	CON	-1		IO timers (for 1.4.3.1-6)
+OUTTIME	CON	-1
+PRINTEROP	CON	0	0 for OUT, 1 for IOC
+INADDR	CON	0		Addresses for IO operators
+OUTADDR	CON	0
+* SUBROUTINES
+MEMORY	STJ	9F
+	J5N	MEMERROR
+	CMP5	=BEGIN=
+	JGE	MEMERROR
+	LDX	0,5
+	ENTA	1
+	SRAX	5
+	LDA	0,5(1:5)
+9H	JMP	*
+FCHECK	STJ	9F
+	ENTA	0
+	ENTX	0,3
+	DIV	=8=
+	CMPX	=5=
+	JG	FERROR
+	STX	R
+	STA	L
+	LD1	L
+	CMPA	R
+9H	JLE	*
+	JMP	FERROR
+GETAV	STJ	9F
+	JMP	1F
+GETV	STJ	9F
+	JMP	FCHECK
+	JMP	MEMORY
+1H	J1Z	2F
+	ENTX	1
+	SLA	-1,1
+	SRA	-1,1
+2H	LD2N	R
+	SRA	5,2
+9H	JMP	*
+* INDIVIDUAL OPERATIONS
+ADD	JMP	GETV
+	ENT1	0
+	JMP	INC
+SUB	JMP	GETV
+	ENT1	0
+	JMP	DEC
+*
+MUL	JMP	GETV
+	CMPX	SIGNA
+	ENTX	1
+	JE	*+2
+	ENNX	1
+	STX	SIGNA
+	STX	SIGNX
+	MUL	AREG
+	JMP	STOREAX
+*
+DIV	LDA	SIGNA
+	STA	SIGNX
+	JMP	GETV
+	CMPX	SIGNA
+	ENTX	1
+	JE	*+2
+	ENNX	1
+	STX	SIGNA
+	STA	TEMP
+	LDA	AREG
+	LDX	XREG
+	DIV	TEMP
+STOREAX	STA	AREG
+	STX	XREG
+OVCHECK	JNOV	CYCLE
+	ENTX	1
+	STX	OVTOG
+	JMP	CYCLE
+*
+SPEC	DEC3	2
+	J3P	FERROR
+	JMP	SPECTBL,3
+	JMP	NUM
+	JMP	CHAR
+SPECTBL	HLT
+NUM	LDA	AREG
+	LDX	XREG
+	NUM
+	STA	AREG(1:5)
+	JMP	CYCLE
+CHAR	LDA	AREG
+	CHAR
+	STA	AREG(1:5)
+	STX	XREG(1:5)
+	JMP	CYCLE
+* 1.4.3.1-2: implement SHIFT
+SHIFT	DEC3	5
+	J3P	FERROR
+	LDA	AREG
+	LDX	XREG
+	INC3	5
+	ST3	*+1(4:4)
+	SLA	0,5
+	STA	AREG(1:5)
+	STX	XREG(1:5)
+	JMP	CYCLE
+* 1.4.3.1-3: implement MOVE
+MOVE	J5N	MEMERROR
+	CMP5	=BEGIN=
+	JGE	MEMERROR
+	ST5	2F(0:2)
+	ST3	2F(4:4)
+	LD1	I1REG
+2H	MOVE	0(0)
+	ST1	I1REG
+	JMP	CYCLE
+*
+LOADN	JMP	GETV
+	ENT1	47,4
+LOADN1	STX	TEMP
+	LDXN	TEMP
+	JMP	LOAD1
+LOAD	JMP	GETV
+	ENT1	55,4
+LOAD1	STA	AREG,1
+	STX	SIGNA,1
+	JMP	SIZECHK
+*
+STORE	JMP	FCHECK
+	JMP	MEMORY
+	J1P	1F
+	ENT1	1
+	LDX	SIGNA+39,4
+1H	LD2N	R
+	SRAX	5,2
+	LDA	AREG+39,4
+	SLAX	5,2
+	ENN2	0,1
+	SRAX	6,2
+	LDA	0,5
+	SRA	6,2
+	SRAX	-1,1
+	STX	0,5
+	JMP	CYCLE
+* 1.4.3.2-6: implement IO operators
+JRED	LDA	=*+16=		Unfortunately =JRED1= isn't actually valid MIXAL.
+	STA	4H(0:2)		JRED uses the same field checking code as JBUS,
+	STA	5H(0:2)		  but after that it jumps to different code.
+JBUS 	DEC3	CARDREAD	We are updating rI3, but we know that the
+	J3Z	2F		  remaining commands in this cycle won't use it.
+	DEC3	2
+	J3Z	3F
+	JMP	FERROR
+2H	LDA	INTIME
+4H	JMP	*+2
+3H	LDA	OUTTIME
+5H	JMP	*+1
+JBUS1	ST3	*+1(4:4)
+	JBUS	JMP(0)		If the device is still busy, jump anyway.
+	JANP	CYCLE		If the simulated timer for the device is not done,
+	JMP	JMP		  do the jump.
+JRED1	ST3	*+1(4:4)
+	JAP	CYCLE		If the simulated timer is done,
+	JRED	JMP		  and device is ready, jump.
+	JMP	CYCLE
+IN	JMP	MEMORY
+	DEC3	CARDREAD
+	J3Z	2F
+	JMP	FERROR
+2H 	STZ	INTIME		Reset simulated timer.
+	LDA	CLOCK
+	ADD	=5000=		Reading a new card takes 10000u; do transmission 5000u later.
+	STA	INTIME		Begin the input timer.
+	ST5	INADDR
+	JMP	CYCLE
+OUT	JMP	MEMORY
+	DEC3	PRINTER
+	J3Z	2F
+	JMP	FERROR
+2H	STZ	OUTTIME
+	LDA	CLOCK
+	ADD	=7500=		Printing a new line takes 7500u; do transmission 3750u later.
+	STA	OUTTIME		Begin the output timer.
+	ST5	OUTADDR
+	ENTA	0
+	STA	PRINTEROP	Set PRINTEROP.
+	JMP	CYCLE
+IOC	DEC3	PRINTER
+	J3Z	2F
+	JMP	FERROR
+2H	JBUS	*(PRINTER)	Wait till device is free.
+	LDA	CLOCK
+	ADD	=5000=		Skipping to a new page takes 10000u; do transmission 5000u later.
+	STA	OUTTIME		Begin the output timer.
+	ENTA	1
+	STA	PRINTEROP	Set PRINTEROP.
+	JMP	CYCLE
+*
+JUMP	DEC3	9
+	J3P	FERROR
+	LDA	COMPI
+	JMP	JTABLE,3
+JMP	ST6	JREG
+	JMP	JSJ
+	JMP	JOV
+	JMP	JNOV
+	JMP	LS
+	JMP	EQ
+	JMP	GR
+	JMP	GE
+	JMP	NE
+JTABLE	JMP	LE
+JOV	LDX	OVTOG
+	JMP	*+3
+JNOV	LDX	OVTOG
+	DECX	1
+	STZ	OVTOG
+	JXNZ	JMP
+	JMP	CYCLE
+LE	JAZ	JMP
+LS	JAN	JMP
+	JMP	CYCLE
+NE	JAN	JMP
+GR	JAP	JMP
+	JMP	CYCLE
+GE	JAP	JMP
+EQ	JAZ	JMP
+	JMP	CYCLE
+JSJ	JMP	MEMORY
+	ENT6	0,5
+	JMP	CYCLE
+*
+REGJUMP	LDA	AREG+23,4
+	JAZ	*+2
+	LDA	SIGNA+23,4
+	DEC3	5
+	J3NP	JTABLE,3
+	JMP	FERROR
+*
+ADDROP	DEC3	3
+	J3P	FERROR
+	ENTX	0,5
+	JXNZ	*+2
+	LDX	INST
+	ENTA	1
+	SRAX	5
+	LDA	M(1:5)
+	ENT1	15,4
+	JMP	1F,3
+	JMP	INC
+	JMP	DEC
+	JMP	LOAD1
+1H	JMP	LOADN1
+DEC	STX	TEMP
+	LDXN	TEMP
+INC	CMPX	SIGNA,1
+	JE	1F
+	SUB	AREG,1
+	JANP	2F
+	STX	SIGNA,1
+	JMP	2F
+1H	ADD	AREG,1
+2H	STA	AREG,1(1:5)
+SIZECHK	LD1	OPTABLE,4(3:3)
+	J1Z	OVCHECK
+	CMPA	ZERO(1:3)
+	JE	CYCLE
+	JMP	SIZEERROR
+*
+COMPARE	JMP	GETV
+	SRAX	5
+	STX	V
+	LDA	XREG,4
+	LDX	SIGNX,4
+	JMP	GETAV
+	SRAX	5
+	CMPX	V
+	STZ	COMPI
+	JE	CYCLE
+	ENTA	1
+	JG	*+2
+	ENNA	1
+	STA	COMPI
+	JMP	CYCLE
+FERROR	ENT4	1		Print error messages
+	JMP	7F
+OPERROR	ENT4	2
+	JMP	7F
+ADDRERROR	ENT4	3
+	JMP	7F
+INDEXERROR	ENT4	4
+	JMP	7F
+MEMERROR	ENT4	5
+	JMP	7F
+7H	OUT	*+3(PRINTER)
+	JBUS	*(PRINTER)
+	HLT
+8H	ALF  ERROR
+	ALF   (CHE
+	ALF  CK rI
+	ALF  4 FOR
+	ALF   CODE
+	ALF  : 1=F
+	ALF  ,2=OP
+	ALF  ,3=AD
+	ALF  DR,4=
+	ALF  INDEX
+	ALF  ,5=ME    
+	ALF  M)   
+	ORIG	8B+24
+	END	BEGIN

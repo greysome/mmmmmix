@@ -1,0 +1,12 @@
+START	IN	100(16)		Use card file "perm1.cards"
+	JBUS	*(16)
+	OUT	100(18)
+	JBUS	*(18)		Print input
+	OUT	200(18)
+	JBUS	*(18)		Print non-ASCII characters in the MIX charset
+	HLT
+	ORIG	200
+	CON	341132628
+	CON	170435210
+	CON	255923347
+	END	START

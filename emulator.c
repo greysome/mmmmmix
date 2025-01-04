@@ -1,5 +1,15 @@
 #include "emulator.h"
 
+//                                                 v MOVE has variable time
+static int instrtimes[64] = { 1, 2, 2,10,12,10, 2,-1,
+		              2, 2, 2, 2, 2, 2, 2, 2,
+		              2, 2, 2, 2, 2, 2, 2, 2,
+		              2, 2, 2, 2, 2, 2, 2, 2,
+		              2, 2, 1,-1,-1,-1, 1, 1,  // IN/OUT/IOC have variable time
+		              1, 1, 1, 1, 1, 1, 1, 1,
+		              1, 1, 1, 1, 1, 1, 1, 1,
+		              2, 2, 2, 2, 2, 2, 2, 2};
+
 int max(int a, int b) { return a >= b ? a : b; }
 
 word ADDR(int x) {
@@ -39,10 +49,13 @@ byte getF(word instr) { return (instr >> 6) & ONES(6); }
 byte getC(word instr) { return instr & ONES(6); }
 word getM(word instr, mix *mix);
 
+bool checkfieldspec(byte F) {
+  int start = F/8, end = F%8;
+  return 0 <= start && start <= 5 && start <= end && end <= 5;
+}
+
 word applyfield(word w, byte F) {
   int start = F/8, end = F%8;
-  assert(0 <= start && start <= 5);
-  assert(start <= end && end <= 5);
   bool sign = (w >> 30) & 1;
   word v = w >> 6*(5-end);  // Last byte of v = end byte of w
   v &= ONES(6 * (end - max(start,1) + 1));  // Keep the desired bytes based on F
@@ -253,76 +266,72 @@ void numtochar(word *destA, word *destX) {
   *destX = WORD(SIGN(*destX), b6, b7, b8, b9, b10);
 }
 
-static void printbyte(byte b) {
+static unsigned char mixchr(byte b, unsigned char *extra) {
+  *extra = '\0';
   switch (b) {
-  case 0: putchar(' '); break;
-
+  case 0: return ' '; break;
   case 1: case 2: case 3: case 4: case 5:
   case 6: case 7: case 8: case 9:
-    putchar('A'+(b-1));
-    break;
-
-  case 10: printf("\u0394"); break;
-
+    return 'A'+(b-1);
+  case 10: *extra = 0x94; return 0xce;  // \u0394, Delta
   case 11: case 12: case 13: case 14: case 15:
   case 16: case 17: case 18: case 19:
-    putchar('J'+(b-11));
-    break;
-
-  case 20: printf("\u03a3"); break;
-  case 21: printf("\u03a0"); break;
-
+    return 'J'+(b-11);
+  case 20: *extra = 0xa3; return 0xce;  // \u03a3, Sigma
+  case 21: *extra = 0xa0; return 0xce;  // \u03a0, Pi
   case 22: case 23: case 24: case 25: case 26:
   case 27: case 28: case 29:
-    putchar('S'+(b-22));
-    break;
-
+    return 'S'+(b-22);
   case 30: case 31: case 32: case 33: case 34:
   case 35: case 36: case 37: case 38: case 39:
-    putchar('0'+(b-30));
-    break;
-
-  case 40: putchar('.'); break;
-  case 41: putchar(','); break;
-  case 42: putchar('('); break;
-  case 43: putchar(')'); break;
-  case 44: putchar('+'); break;
-  case 45: putchar('-'); break;
-  case 46: putchar('*'); break;
-  case 47: putchar('/'); break;
-  case 48: putchar('='); break;
-  case 49: putchar('$'); break;
-  case 50: putchar('<'); break;
-  case 51: putchar('>'); break;
-  case 52: putchar('@'); break;
-  case 53: putchar(';'); break;
-  case 54: putchar(':'); break;
-  case 55: putchar('\''); break;
-
-  default: putchar('?'); break;
+    return '0'+(b-30);
+  case 40: return '.';
+  case 41: return ',';
+  case 42: return '(';
+  case 43: return ')';
+  case 44: return '+';
+  case 45: return '-';
+  case 46: return '*';
+  case 47: return '/';
+  case 48: return '=';
+  case 49: return '$';
+  case 50: return '<';
+  case 51: return '>';
+  case 52: return '@';
+  case 53: return ';';
+  case 54: return ':';
+  case 55: return '\'';
+  case 56: return 'a';
+  case 57: return 'b';
+  case 58: return 'c';
+  case 59: return 'd';
+  case 60: return 'e';
+  case 61: return 'f';
+  case 62: return 'g';
+  case 63: return 'h';
+  default: return '?';
   }
 }
 
-byte mixcharcode(char c) {
+byte mixord(char c) {
   switch (c) {
   case ' ': return 0;
-
+  // My custom non-unicode substitutes for Delta/Sigma/Pi
+  case '!': return 10;
+  case '[': return 20;
+  case ']': return 21;
   case 'A': case 'B': case 'C': case 'D': case 'E':
   case 'F': case 'G': case 'H': case 'I':
     return 1+c-'A';
-
   case 'J': case 'K': case 'L': case 'M': case 'N':
   case 'O': case 'P': case 'Q': case 'R':
     return 11+c-'J';
-
   case 'S': case 'T': case 'U': case 'V': case 'W':
   case 'X': case 'Y': case 'Z':
     return 22+c-'S';
-
   case '0': case '1': case '2': case '3': case '4':
   case '5': case '6': case '7': case '8': case '9':
     return 30+c-'0';
-
   case '.': return 40;
   case ',': return 41;
   case '(': return 42;
@@ -339,6 +348,14 @@ byte mixcharcode(char c) {
   case ';': return 53;
   case ':': return 54;
   case '\'': return 55;
+  case 'a': return 56;
+  case 'b': return 57;
+  case 'c': return 58;
+  case 'd': return 59;
+  case 'e': return 60;
+  case 'f': return 61;
+  case 'g': return 62;
+  case 'h': return 63;
   default: return 63;
   }
 }
@@ -360,6 +377,148 @@ void initmix(mix *mix) {
   for (int i = 0; i < 4000; i++)
     mix->mem[i] = POS(0);
   mix->cardfile = NULL;
+  for (int i = 0; i < 8; i++)
+    mix->tapefiles[i] = NULL;
+
+  for (int i = 0; i < 21; i++) {
+    mix->iothreads[i].timer = 0;
+    mix->iothreads[i].err = "";
+  }
+}
+
+static void _write_char(unsigned char c, unsigned char extra, FILE *fp) {
+  if (extra) {
+    // I don't want to write a unicode Delta/Pi/Sigma to a file, so
+    // instead I use the characters !/[/] respectively.
+    if (extra == 0x94) fputc('!', fp);
+    else if (extra == 0xa3) fputc('[', fp);
+    else if (extra == 0xa0) fputc(']', fp);
+  }
+  else
+    fputc(c, fp);
+}
+
+// Return false if there was an error carrying out the IO operation.
+static bool execute_io(IOthread *iothread, mix *mix) {
+  word M = iothread->M;
+  word F = iothread->F;
+  word C = iothread->C;
+
+  // For each IO operation, the below code runs only *once*, when half
+  // the specified time for the operation has elapsed.
+
+#define CHECKADDR(i)                                        \
+  if ((i)<0 || (i)>=4000) {                                 \
+    iothread->err = "illegal address during IO operation";  \
+    return false;                                           \
+  }
+
+  if (F == 16) {       // Card reader
+    if (mix->cardfile == NULL) {
+      iothread->err = "unspecified card file";
+      return false;
+    }
+    for (int i = 0; i < 80; i++) {
+      char c;
+      if ((c = fgetc(mix->cardfile)) == EOF) {
+	iothread->err = "unexpected EOF in middle of card";
+	return false;
+      }
+      if (c == '\n') {
+	i--;
+	continue;
+      }
+      // Shift the character into the appropriate byte of the appropriate word.
+      int pos = i%5 + 1;
+      CHECKADDR(INT(M)+i/5)
+      storeword(&mix->mem[INT(M)+i/5], mixord(c), pos*8 + pos);
+    }
+  }
+
+  else if (F == 18) {  // Line printer
+    // Each line has 120 characters (plus the trailing \n\0), a
+    // character may need 2 bytes to encode (for the codepoints
+    // 10=Delta, 20=Sigma, 21=Pi).
+    unsigned char line[120*2+2];
+    int c = 0;
+    unsigned char extra;
+
+#define ADDCHAR(b) line[c++] = mixchr((b), &extra);	\
+    if (extra) line[c++] = extra;
+
+    for (int i = 0; i < 24; i++) {
+      CHECKADDR(INT(M)+i)
+      word w = mix->mem[INT(M)+i];
+      byte b1 = (w >> 24) & ONES(6); ADDCHAR(b1)
+      byte b2 = (w >> 18) & ONES(6); ADDCHAR(b2)
+      byte b3 = (w >> 12) & ONES(6); ADDCHAR(b3)
+      byte b4 = (w >>  6) & ONES(6); ADDCHAR(b4)
+      byte b5 =  w        & ONES(6); ADDCHAR(b5)
+    }
+    line[c++] = '\n';
+    line[c++] = '\0';
+    printf(line);
+  }
+
+  else if (0 <= F && F <= 7 && C == 36) {  // Tape IN
+    if (mix->tapefiles[F] == NULL) {
+      iothread->err = "unspecified tape file";
+      return false;
+    }
+    for (int i = 0; i < 600; i++) {
+      char c;
+      if ((c = fgetc(mix->tapefiles[F])) == EOF) {
+	iothread->err = "unexpected EOF in middle of tape";
+	return false;
+      }
+      if (c == '\n') {
+	i--;
+	continue;
+      }
+      CHECKADDR(INT(M)+i/6)
+      if (i%6 == 0) {
+	// Load the word's sign
+	if (c == '#')
+	  mix->mem[INT(M)+i/6] = POS(0);
+	else if (c == '~')
+	  mix->mem[INT(M)+i/6] = NEG(0);
+	else {
+	  iothread->err = "invalid sign in tape, should be # or ~";
+	  return false;
+	}
+      }
+      else {
+	// Shift the character into the appropriate byte of the appropriate word.
+	int pos = i%6;
+	storeword(&mix->mem[INT(M)+i/6], mixord(c), pos*8 + pos);
+      }
+    }
+  }
+
+  else if (0 <= F && F <= 7 && C == 37) {  // Tape OUT
+    FILE *fp = mix->tapefiles[F];
+    if (fp == NULL) {
+      iothread->err = "unspecified tape file";
+      return false;
+    }
+    unsigned char c, extra;
+#define WRITECHAR(b) c = mixchr((b), &extra);	\
+  _write_char(c, extra, fp);
+
+    for (int i = 0; i < 100; i++) {
+      CHECKADDR(INT(M)+i)
+      word w = mix->mem[INT(M)+i];
+      _write_char(SIGN(w) ? '#' : '~', '\0', fp);
+      byte b1 = (w >> 24) & ONES(6); WRITECHAR(b1)
+      byte b2 = (w >> 18) & ONES(6); WRITECHAR(b2)
+      byte b3 = (w >> 12) & ONES(6); WRITECHAR(b3)
+      byte b4 = (w >>  6) & ONES(6); WRITECHAR(b4)
+      byte b5 =  w        & ONES(6); WRITECHAR(b5)
+    }
+    _write_char('\n', '\0', fp);
+  }
+
+  return true;
 }
 
 void onestep(mix *mix) {
@@ -378,63 +537,63 @@ void onestep(mix *mix) {
   byte F = getF(instr);
   byte I = getI(instr);
   word M = getM(instr, mix);
-
   // We don't want to evaluate V straight away, because INT(M) may not
   // be a valid address for instructions like ENTA
 #define V() applyfield(mix->mem[INT(M)], F)
 
-  mix->execcounts[mix->PC]++;
-#define LOGTIME(t) mix->exectimes[mix->PC] += (t)
+  // Update execution count/time
+  int instrtime;
+  // The instruction times for MOVE/IN/OUT/IOC are updated in their
+  // respective branches, because they are variable.
+  if (0 <= C && C <= 63)
+    instrtime = instrtimes[C];
+  int oldPC = mix->PC;
 
-  if (C == 0)                                   // NOP
-    LOGTIME(1);
+#define FIELDSPEC(C) if (!checkfieldspec(F)) {            \
+    mix->done = true;                                     \
+    mix->err = "invalid field for " #C;                   \
+  }
 
-  else if (C == 1) {                            // ADD
-    LOGTIME(2);
+  if (C == 1) {                                 // ADD
+    FIELDSPEC("ADD")
     CHECKADDR(INT(M))
     mix->overflow = addword(&mix->A, V());
   }
 
   else if (C == 2) {                            // SUB
-    LOGTIME(2);
+    FIELDSPEC("SUB")
     CHECKADDR(INT(M))
     mix->overflow = subword(&mix->A, V());
   }
 
   else if (C == 3) {                            // MUL
-    LOGTIME(10);
+    FIELDSPEC("MUL")
     CHECKADDR(INT(M))
     mulword(&mix->A, &mix->X, V());
   }
 
   else if (C == 4) {                            // DIV
-    LOGTIME(12);
+    FIELDSPEC("DIV")
     CHECKADDR(INT(M))
     mix->overflow = divword(&mix->A, &mix->X, V());
   }
 
   else if (C == 5) {
-    if (F == 0) {                               // NUM
-      LOGTIME(10);
+    if (F == 0)                                 // NUM
       wordtonum(&mix->A, &mix->X);
-    }
-    else if (F == 1) {                          // CHAR
-      LOGTIME(10);
+    else if (F == 1)                            // CHAR
       numtochar(&mix->A, &mix->X);
-    }
     else if (F == 2) {                          // HLT
-      LOGTIME(10);
       mix->done = true;
       mix->err = "";
     }
     else {
       mix->done = true;
-      mix->err = "invalid field for instruction, C=5";
+      mix->err = "invalid field for SPECIAL";
     }
   }
 
   else if (C == 6) {
-    LOGTIME(2);
     if (F == 0)
       shiftleftword(&mix->A, INT(M));           // SLA
     else if (F == 1)
@@ -449,12 +608,12 @@ void onestep(mix *mix) {
       shiftrightcirc(&mix->A, &mix->X, INT(M)); // SRC
     else {
       mix->done = true;
-      mix->err = "invalid field for instruction, C=6";
+      mix->err = "invalid field for SHIFT";
     }
   }
 
   else if (C == 7) {                            // MOVE
-    LOGTIME(1 + 2*F);
+    instrtime = 1 + 2*F;
     for (int i = 0; i < F; i++) {
       CHECKADDR(INT(M)+i)
       CHECKADDR(INT(mix->Is[0]))
@@ -464,13 +623,13 @@ void onestep(mix *mix) {
   }
 
   else if (8 <= C && C <= 15) {                 // LDx
-    LOGTIME(2);
+    FIELDSPEC("LDx")
     CHECKADDR(INT(M))
     loadword(Iaddr(C-8, mix), V());
   }
 
   else if (16 <= C && C <= 23) {                // LDxN
-    LOGTIME(2);
+    FIELDSPEC("LDxN")
     CHECKADDR(INT(M))
     loadword(Iaddr(C-16, mix), negword(V()));
     // If sign is not part of F, make the word negative.
@@ -479,87 +638,102 @@ void onestep(mix *mix) {
   }
 
   else if (24 <= C && C <= 31) {                // STx
-    LOGTIME(2);
+    FIELDSPEC("STx")
+    CHECKADDR(INT(M))
     storeword(&mix->mem[INT(M)], *Iaddr(C-24, mix), F);
   }
 
   else if (C == 32) {                           // STJ
-    LOGTIME(2);
+    FIELDSPEC("STJ")
+    CHECKADDR(INT(M))
     storeword(&mix->mem[INT(M)], mix->J, F);
   }
 
   else if (C == 33) {                           // STZ
-    LOGTIME(2);
+    FIELDSPEC("STZ")
+    CHECKADDR(INT(M))
     storeword(&mix->mem[INT(M)], 0, F);
   }
 
   else if (C == 34) {                           // JBUS
-    LOGTIME(1);
-  }
-
-  else if (C == 35) {                           // IOC
-    LOGTIME(1);
-  }
-
-  else if (C == 36) {                           // IN
-    LOGTIME(1);
-    if (F == 16) {                              // Card reader
-      if (mix->cardfile == NULL) {
-	mix->done = true;
-	mix->err = "unspecified input file for card reader";
-	goto skip;
+    if (0 <= F <= 7 || F == 16 || F == 18) {
+      if (mix->iothreads[F].timer > 0) {
+	mix->J = POS(mix->PC+1);
+	mix->PC = INT(M);
+	goto noadvance;
       }
-      for (int i = 0; i < 80; i++) {
-	char c;
-	if ((c = fgetc(mix->cardfile)) == EOF) {
-	  mix->done = true;
-	  mix->err = "EOF encountered in card reader";
-	  goto skip;
-	}
-	if (c == '\n') {
-	  i--;
-	  continue;
-	}
-	// Shift the character into the appropriate byte of the appropriate word.
-	int pos = i%5 + 1;
-	CHECKADDR(INT(M)+i/5)
-	word w = mix->mem[INT(M)+i/5];
-	storeword(&mix->mem[INT(M)+i/5], mixcharcode(c), pos*8 + pos);
-      }
-skip:
     }
     else {
       mix->done = true;
-      mix->err = "invalid input device, C=36";
+      mix->err = "invalid field for JBUS";
+    }
+  }
+
+  else if (C == 35) {                           // IOC
+    // TODO
+  }
+
+  else if (C == 36) {                           // IN
+    if (0 <= F <= 7 || F == 16) {
+      IOthread *iothread = &mix->iothreads[F];
+      instrtime = 1 + iothread->timer;
+      // If IO transmission hasn't happened, do it NOW and
+      // immediately mark the operation as complete.
+      // (Thus simulating a blocking operation.)
+      if (iothread->timer > iothread->totaltime/2)
+	execute_io(iothread, mix);
+      // Reset the arguments.
+      iothread->M = M;
+      iothread->F = F;
+      iothread->C = C;
+      iothread->err = "";
+      iothread->totaltime = mix->INtimes[F];
+      iothread->timer = mix->INtimes[F];
+    }
+    else {
+      mix->done = true;
+      mix->err = "invalid input device for IN";
     }
   }
 
   else if (C == 37) {                           // OUT
-    LOGTIME(1);
-    if (F == 18) {                              // Line printer
-      for (int i = 0; i < 24; i++) {
-	CHECKADDR(INT(M)+i)
-	word w = mix->mem[INT(M)+i];
-	byte b1 = (w >> 24) & ONES(6); printbyte(b1);
-	byte b2 = (w >> 18) & ONES(6); printbyte(b2);
-	byte b3 = (w >> 12) & ONES(6); printbyte(b3);
-	byte b4 = (w >>  6) & ONES(6); printbyte(b4);
-	byte b5 =  w        & ONES(6); printbyte(b5);
-      }
-      putchar('\n');
+    if (0 <= F <= 7 || F == 18) {
+      IOthread *iothread = &mix->iothreads[F];
+      instrtime = 1 + iothread->timer;
+      // If IO transmission hasn't happened, do it NOW and
+      // immediately mark the operation as complete.
+      // (Thus simulating a blocking operation.)
+      if (iothread->timer > iothread->totaltime/2)
+	execute_io(iothread, mix);
+      // Reset the arguments.
+      iothread->M = M;
+      iothread->F = F;
+      iothread->C = C;
+      iothread->err = "";
+      iothread->totaltime = mix->OUTtimes[F];
+      iothread->timer = mix->OUTtimes[F];
     }
     else {
       mix->done = true;
-      mix->err = "invalid output device, C=37";
+      mix->err = "invalid output device for OUT";
     }
   }
 
   else if (C == 38) {                           // JRED
-    LOGTIME(1);
+    if (0 <= F <= 7 || F == 16 || F == 18) {
+      if (mix->iothreads[F].timer == 0) {
+	mix->J = POS(mix->PC+1);
+	mix->PC = INT(M);
+	goto noadvance;
+      }
+    }
+    else {
+      mix->done = true;
+      mix->err = "invalid field for JRED";
+    }
   }
 
   else if (C == 39) {
-    LOGTIME(1);
     if (F == 0 || F == 1 ||                     // JMP/JSJ
 	(F == 2 && mix->overflow)  ||           // JOV
 	(F == 3 && !mix->overflow) ||           // JNOV
@@ -569,19 +743,19 @@ skip:
 	(F == 7 && mix->cmp >= 0)  ||           // JGE
 	(F == 8 && mix->cmp != 0)  ||           // JNE
 	(F == 9 && mix->cmp <= 0)) {            // JLE
-      if (F != 2)
+      if (F != 1)
 	mix->J = POS(mix->PC+1);
+      CHECKADDR(INT(M))
       mix->PC = INT(M);
       goto noadvance;
     }
     else if (F >= 10) {
       mix->done = true;
-      mix->err = "invalid field for instruction, C=39";
+      mix->err = "invalid field for JUMP";
     }
   }
 
   else if (40 <= C && C <= 47) {
-    LOGTIME(1);
     word w = *Iaddr(C-40, mix);
     if ((F == 0 && !SIGN(w) && MAG(w) > 0)   ||   // JxN
 	(F == 1 && MAG(w) == 0)              ||   // JxZ
@@ -595,12 +769,11 @@ skip:
     }
     else if (F >= 6) {
       mix->done = true;
-      mix->err = "invalid field for instruction, C=40-47";
+      mix->err = "invalid field for REGJUMP";
     }
   }
 
   else if (48 <= C && C <= 55) {
-    LOGTIME(1);
     if (F == 0)                                 // INCx
       mix->overflow = addword(Iaddr(C-48, mix), M);
     else if (F == 1)                            // DECx
@@ -611,12 +784,12 @@ skip:
       *Iaddr(C-48, mix) = negword(M);
     else {
       mix->done = true;
-      mix->err = "invalid field for instruction, C=48-55";
+      mix->err = "invalid field for ADDROP";
     }
   }
 
   else if (56 <= C && C <= 63) {                // CMPx
-    LOGTIME(2);
+    FIELDSPEC("CMP")
     CHECKADDR(INT(M))
     mix->cmp = compareword(applyfield(*Iaddr(C-56, mix), F), V());
   }
@@ -651,4 +824,33 @@ noadvance:
     mix->done = true;
     mix->err = "rJ contains more than two bytes";
   }
+
+  for (int i = 0; i < 21; i++) {
+    IOthread *iothread = &mix->iothreads[i];
+    // Execute IO operation exactly when half the specified time has
+    // elapsed.
+    if (iothread->timer <= 0) {
+      iothread->timer = 0;
+      continue;
+    }
+    if (iothread->timer > iothread->totaltime/2 &&
+	iothread->timer - instrtime <= iothread->totaltime/2) {
+      if (!execute_io(iothread, mix)) {
+	mix->done = true;
+	mix->err = iothread->err;
+      }
+    }
+    iothread->timer -= instrtime;
+  }
+
+  if (mix->done) {
+    // Flush the tape files
+    for (int i = 0; i < 7; i++) {
+      if (mix->tapefiles[i] != NULL)
+	fflush(mix->tapefiles[i]);
+    }
+  }
+
+  mix->execcounts[oldPC]++;
+  mix->exectimes[oldPC] += instrtime;
 }

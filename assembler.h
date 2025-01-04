@@ -25,7 +25,7 @@ typedef struct {
   char syms[MAXSYMS][11];
   word symvals[MAXSYMS];
   futureref futurerefs[MAXSYMS];
-  int localsymcounts[10];  // The current number of instances of each local sym nH.
+  int localsymcounts[10];  // The current number of instances of each local symbol <n>H.
 } parsestate;
 
 // Returned by reference in parseline() for mmm to use.

@@ -1,3 +1,4 @@
+* Knuth's very first example of a MIX routine
 X	EQU	1000
 	ORIG	3000
 MAXIMUM	STJ	EXIT

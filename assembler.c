@@ -306,7 +306,9 @@ err:
 }
 
 bool parseI(char **s, word *val, parsestate *ps) {
-  SKIPSPACES(*s);
+  // Don't skip spaces here; if there is whitespace before the comma,
+  // we take it to be a comment, e.g.
+  // LDA     0       ,comma
   char sym[11];
   if (**s == ',')
     return parseexpr((++*s, s), val, ps);
@@ -315,7 +317,9 @@ bool parseI(char **s, word *val, parsestate *ps) {
 }
 
 bool parseF(char **s, word *val, parsestate *ps) {
-  SKIPSPACES(*s);
+  // Don't skip spaces here; if there is whitespace before the opening
+  // bracket, we take it to be a comment, e.g.
+  // LDA     0       (test comment)
   char *start = *s;
   if (**s == '(') {
     (*s)++;
@@ -434,7 +438,7 @@ bool parseline(char *line, parsestate *ps, mix *mix, extraparseinfo *extraparsei
     if (!parseALF(&line, alf, ps))
       return false;
     for (int i = 0; i < 5; i++)
-      alf[i] = mixcharcode(alf[i]);
+      alf[i] = mixord(alf[i]);
     mix->mem[ps->star++] = WORD(true, alf[0], alf[1], alf[2], alf[3], alf[4]);
     extraparseinfo->setdebugline = true;
   }
