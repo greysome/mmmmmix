@@ -43,7 +43,6 @@ DECIN	LDA	INTIME
 	LDX	INADDR
 	STX	*+1(0:2)
 	IN	*(CARDREAD)	  finally execute the IN.
-	JBUS	*(CARDREAD)
 2H	JANN	*+2		Make sure timer is not negative.
 	ENTA	0
 	STA	INTIME
@@ -57,7 +56,6 @@ DECOUT	LDA	OUTTIME
 	CMPA	FIVEK
 	JGE	2F		  new timer < 5000,
 	IOC	0(PRINTER)	  finally execute the IOC.
-	JBUS	0(PRINTER)
 	JMP	2F
 3H	CMPX	HALF7500	ELSE:
 	JL	2F		if old timer >= 3750 and
@@ -66,7 +64,6 @@ DECOUT	LDA	OUTTIME
 	LDX	OUTADDR
 	STX	*+1(0:2)
 	OUT	*(PRINTER)	  finally execute the OUT.
-	JBUS	*(PRINTER)
 2H	JANN	*+2		Make sure timer is not negative.
 	ENTA	0
 	STA	OUTTIME
@@ -358,7 +355,8 @@ IN	JMP	MEMORY
 	DEC3	CARDREAD
 	J3Z	2F
 	JMP	FERROR
-2H 	STZ	INTIME		Reset simulated timer.
+2H	JBUS	*(CARDREAD)	Wait for card reader.
+ 	STZ	INTIME		Reset simulated timer.
 	LDA	CLOCK
 	ADD	=5000=		Reading a new card takes 10000u; do transmission 5000u later.
 	STA	INTIME		Begin the input timer.
@@ -368,7 +366,8 @@ OUT	JMP	MEMORY
 	DEC3	PRINTER
 	J3Z	2F
 	JMP	FERROR
-2H	STZ	OUTTIME
+2H	JBUS	*(PRINTER)	Wait for printer.
+	STZ	OUTTIME
 	LDA	CLOCK
 	ADD	=7500=		Printing a new line takes 7500u; do transmission 3750u later.
 	STA	OUTTIME		Begin the output timer.
