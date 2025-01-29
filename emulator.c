@@ -266,7 +266,7 @@ void numtochar(word *destA, word *destX) {
   *destX = WORD(SIGN(*destX), b6, b7, b8, b9, b10);
 }
 
-static unsigned char mixchr(byte b, unsigned char *extra) {
+unsigned char mixchr(byte b, unsigned char *extra) {
   *extra = '\0';
   switch (b) {
   case 0: return ' '; break;
@@ -421,8 +421,10 @@ static bool execute_io(IOthread *iothread, mix *mix) {
     for (int i = 0; i < 80; i++) {
       char c;
       if ((c = fgetc(mix->cardfile)) == EOF) {
-	iothread->err = "unexpected EOF in middle of card";
-	return false;
+	// Fill in the remaining characters with 0s
+	c = ' ';
+	//iothread->err = "unexpected EOF in middle of card";
+	//return false;
       }
       if (c == '\n') {
 	i--;

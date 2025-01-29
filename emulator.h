@@ -100,6 +100,7 @@ void shiftrightcirc(word *destA, word *destX, int M);
 void wordtonum(word *destA, word *destX);
 void numtochar(word *destA, word *destX);
 
+unsigned char mixchr(byte b, unsigned char *extra);
 byte mixord(char c);
 void initmix(mix *mix);
 void onestep(mix *mix);

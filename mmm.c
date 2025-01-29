@@ -1,3 +1,5 @@
+// MIX MANAGEMENT MODULE
+
 #include <ctype.h>
 #include <stdlib.h>
 #include "emulator.h"
@@ -417,9 +419,9 @@ void printregisters(mmmstate *mmm) {
     if (iothread.C == 35)
       printf(GREEN("%d") CYAN("  IOC") "  (%du left)\n", i, iothread.timer);
     else if (iothread.C == 36)
-      printf(GREEN("%d") CYAN("  IN ") "  (%du left)\n", i, iothread.timer);
+      printf(GREEN("%d") CYAN("  IN ") "  (%du left), address = %04d\n", i, iothread.timer, INT(iothread.M));
     else if (iothread.C == 37)
-      printf(GREEN("%d") CYAN("  OUT") "  (%du left)\n", i, iothread.timer);
+      printf(GREEN("%d") CYAN("  OUT") "  (%du left), address = %04d\n", i, iothread.timer, INT(iothread.M));
   }
 
   printf("\nCur instruction:\n");
@@ -458,7 +460,7 @@ void printtime(mmmstate *mmm) {
     // Compensate for the \033 sequences using up 20 characters, since
     // they don't move the cursor right
     numchars -= 20;
-    
+
     if (count >= 1) {
       if (numchars < 24)
 	printf("\t\t");
@@ -645,12 +647,76 @@ bool loadmixalfile(char *filename, mmmstate *mmm) {
   return true;
 }
 
+static unsigned char mixchr_ascii(byte b) {
+  char extra;
+  char c = mixchr(b, &extra);
+  if (extra == 0x94)
+    return '!';
+  else if (extra == 0xa3)
+    return '[';
+  else if (extra == 0xa4)
+    return ']';
+}
+
+void exportcards(mmmstate *mmm) {
+  // The last memory cell that is not +0
+  int programend = 0;
+  for (int i = 0; i < 4000; i++) {
+    if (mmm->mix.mem[i] != POS(0))
+      programend = i;
+  }
+  // "Snap" programend to the end of card
+  // e.g. 0-15 -> 15, 16-31 -> 31
+  programend += 15 - programend%16;
+  // If the program extends to cell 3500 (which would be the end of
+  // the 218th card), then it won't fit when loaded as cards into
+  // mixsim.mixal. (Cells 3500-3999 are reserved for the simulator
+  // logic.)
+  if (programend >= 3499) {
+    printf(RED("The program goes beyond cell 3500. It cannot be loaded as cards into mixsim.mixal.\n"));
+    return;
+  }
+
+  FILE *fp;
+  if ((fp = fopen("program.cards", "w")) == NULL)
+    printf(RED("Could not create file program.cards\n"));
+
+  for (int i = 0; i <= programend; i++) {
+    word w = mmm->mix.mem[i];
+    if (!SIGN(w)) {
+      printf(RED("Negative words cannot be loaded into cards\n"));
+      return;
+    }
+    byte b5 =  w      & ONES(6);
+    byte b4 = (w>>6)  & ONES(6);
+    byte b3 = (w>>12) & ONES(6);
+    byte b2 = (w>>18) & ONES(6);
+    byte b1 = (w>>24) & ONES(6);
+    printf("%d/%d: %d %d %d %d %d\n", i,programend, b1,b2,b3,b4,b5);
+    fputc(mixchr_ascii(b1), fp);
+    fputc(mixchr_ascii(b2), fp);
+    fputc(mixchr_ascii(b3), fp);
+    fputc(mixchr_ascii(b4), fp);
+    fputc(mixchr_ascii(b5), fp);
+    if (i%16 == 15)  // End of card
+      fputc('\n', fp);
+  }
+
+  // End-of-program card
+  fputs(".....", fp);
+  for (int i = 0; i < 75; i++)
+    fputc(' ', fp);
+
+  printf(GREEN("Saved program into program.cards.\n"));
+}
+
 void printhelp() {
   printf(
     CYAN("COMMANDS:\n")
     "<empty>\t\trepeat previous command\n"
-    "l\t\treload MIXAL and card file\n"
-    "@<file>\t\tload new card file\n"
+    "l\t\treload MIXAL, card and tape files\n"
+    "@<file>\t\tuse card file\n"
+    "#<n><file>\tuse tape file\n"
     "s\t\trun one step\n"
     "b<line>\t\trun till specified line\n"
     "b.<sym>\t\trun till specified line\n"
@@ -663,6 +729,7 @@ void printhelp() {
     "v<from>-<to>\tview a range of cells\n"
     "r\t\tview registers and flags\n"
     "t\t\tprint timing statistics\n"
+    "C\t\texport program into cards\n"
     "h\t\tprint this help\n"
     "q\t\tquit\n"
   );
@@ -721,10 +788,13 @@ int main(int argc, char **argv) {
     }
     strncpy(mmm.prevline, line, LINELEN);
 
-    if (line[0] == 'l') {       // Reload MIXAL and card file
+    if (line[0] == 'l') {       // Reload MIXAL, card and tape files
       if (!loadmixalfile(argv[1], &mmm))
 	return 0;
       loadcardfile(mmm.globalcardfile, &mmm);
+      for (int i = 0; i < 8; i++)
+	if (mmm.globaltapefiles[i] != '\0')
+	  loadtapefile(mmm.globaltapefiles[i], i, &mmm);
     }
     else if (line[0] == '@') {  // Load new card file
       if (loadcardfile(line+1, &mmm))
@@ -758,6 +828,8 @@ int main(int argc, char **argv) {
       printregisters(&mmm);
     else if (line[0] == 't')    // View timing statistics
       printtime(&mmm);
+    else if (line[0] == 'C')    // Export program into cards
+      exportcards(&mmm);
     else if (line[0] == 'h')    // Help
       printhelp();
     else if (line[0] == 'q')    // Quit
