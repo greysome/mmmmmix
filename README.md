@@ -28,7 +28,7 @@ The most basic task is to run a program as-is. This can be done by typing `g` in
 | `r` | View register contents |
 | `t` | View timing statistics |
 
-Also, many MIXAL programs involve I/O, and we need to specify where to read the input and write the output. I/O devices such as cards and tapes are represented as plain text files, and each file is essentially a sequence of words encoded with MIX's character set. (For specifics, look at "Card format" and "Tape format".)
+Also, many MIXAL programs involve I/O, and we need to specify where to read the input and write the output. In my implementation, I represent I/O devices like cards and tapes as plain text files. Each file is essentially a sequence of words encoded with MIX's character set. For specifics, look at "Card format" and "Tape format".
 
 If the program reads input from cards, we can specify it as a command-line argument, or inside the mmm prompt:
 
@@ -48,14 +48,19 @@ If tape n is used for either input or output, then it needs to be specified in t
 >> #n<tapefile>
 Loaded tape file <tapefile>
 ```
+
+**NOTE**: Only a few I/O devices have been implemented currently, namely the card reader, line printer and tape units. The `IOC` operation in MIX has not been fully implemented for tape units.
+
 ## Card format
 
 A card file (`.cards`) consists of a series of words, and a word is a sequence of 5 bytes encoded in MIX's character set, with two modifications:
 - The characters $\Delta$, $\Sigma$ and $\Pi$ (corresponding to codes 10,20,21) are replaced with `!`, `[` and `]`, for compatibility with ASCII.
 - I've added the characters `abcdefgh` for the codes 56-63. Thus, every positive word can be input into a MIX program via cards -- in particular we can load MIX programs!
 
-Note that these are non-standard changes which are only supported by my implementation.
+Newlines are ignored, but they are useful to denote the end of a card (each card has 16 words, or 80 characters).
 
 ## Tape format
 
-A tape file (`.tape`) consists of a series of words. Unlike cards however, the sign is also stored at the start of each word: `#` for positive and `~` for negative (because `+` and `-` are already used in the character set. The encoding of bytes is exactly the same as in cards.
+A tape file (`.tape`) consists of a series of words. Unlike cards however, the sign is also stored at the start of each word: `#` for positive and `~` for negative (because `+` and `-` are already used in the character set). The encoding of bytes is exactly the same as in cards.
+
+Newlines are ignored, but they are useful to denote the end of a block (each block has 100 words, or 500 characters).
